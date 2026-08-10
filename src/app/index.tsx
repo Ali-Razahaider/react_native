@@ -38,7 +38,7 @@ export default function LibraryScreen() {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "application/pdf",
-        copyToCacheDirectory: true,
+        copyToCacheDirectory: false,
         multiple: false,
       });
       if (result.canceled || !result.assets[0]) return;
