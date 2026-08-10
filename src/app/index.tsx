@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedIcon } from "@/components/animated-icon";
 import { HintRow } from "@/components/hint-row";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { WebBadge } from "@/components/web-badge";
@@ -33,6 +34,8 @@ export default function HomeScreen() {
    return (
       <ThemedView style={styles.container}>
          <SafeAreaView style={styles.safeArea}>
+            <ThemeToggle />
+
             <ThemedView style={styles.heroSection}>
                <AnimatedIcon />
                <ThemedText type="title" style={styles.title}>

@@ -14,6 +14,10 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    surfaceElevated: '#ffffff',
+    border: '#E0E1E6',
+    tint: '#208AEF',
+    danger: '#E5484D',
   },
   dark: {
     text: '#ffffff',
@@ -21,10 +25,16 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    surfaceElevated: '#1C1C1F',
+    border: '#2E3135',
+    tint: '#4DA3FF',
+    danger: '#FF6369',
   },
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 export const Fonts = Platform.select({
   ios: {

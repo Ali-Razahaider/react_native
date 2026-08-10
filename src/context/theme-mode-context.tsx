@@ -7,9 +7,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Platform, useColorScheme } from 'react-native';
+import { Platform } from 'react-native';
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+import { type ThemeMode } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 type ThemeModeContextValue = {
   mode: ThemeMode;
