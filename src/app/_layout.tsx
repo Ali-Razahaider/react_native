@@ -13,7 +13,8 @@ function RootNavigator() {
     <ThemeProvider value={resolvedScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
       <Stack>
-        <Stack.Screen name="index" />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="reader/[id]" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
   );

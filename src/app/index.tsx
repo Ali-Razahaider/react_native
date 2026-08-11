@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { BrandHeader } from "@/components/brand/brand-header";
 import { BrandLoader } from "@/components/brand/brand-loader";
 import { BookCard } from "@/components/library/book-card";
 import { EmptyState } from "@/components/library/empty-state";
@@ -76,15 +77,15 @@ export default function LibraryScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <View style={styles.headerText}>
-            <ThemedText type="subtitle">Library</ThemedText>
-            {!loading && !error && books.length > 0 && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {countLabel}
-              </ThemedText>
-            )}
-          </View>
-          <ThemeToggle />
+          <BrandHeader
+            right={<ThemeToggle />}
+            style={styles.headerBrand}
+          />
+          {!loading && !error && books.length > 0 && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {countLabel}
+            </ThemedText>
+          )}
         </View>
 
         {loading ? (
@@ -148,14 +149,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
   header: {
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.three,
+    gap: Spacing.half,
+  },
+  headerBrand: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.three,
-  },
-  headerText: {
-    gap: Spacing.half,
   },
   center: {
     flex: 1,

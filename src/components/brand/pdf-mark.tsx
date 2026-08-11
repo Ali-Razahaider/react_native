@@ -92,7 +92,6 @@ const styles = StyleSheet.create({
   },
   tagText: {
     color: '#ffffff',
-    fontSize: 14,
     fontWeight: '700',
     letterSpacing: 1.5,
   },
