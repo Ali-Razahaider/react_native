@@ -160,7 +160,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: Spacing.six,
-    gap: Spacing.two,
   },
   addButton: {
     position: "absolute",

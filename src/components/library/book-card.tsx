@@ -24,8 +24,8 @@ export function BookCard({ book, onPress }: Props) {
       accessibilityRole="button"
       accessibilityLabel={`Open ${book.title}`}
       style={({ pressed }) => [
-        styles.card,
-        { backgroundColor: theme.surfaceElevated, borderColor: theme.border },
+        styles.row,
+        { borderColor: theme.border },
         pressed && styles.pressed,
       ]}>
       <View style={[styles.badge, { backgroundColor: theme.tint }]}>
@@ -46,13 +46,12 @@ export function BookCard({ book, onPress }: Props) {
 }
 
 const styles = StyleSheet.create({
-  card: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
-    borderWidth: 1,
+    paddingVertical: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   badge: {
     width: 40,
