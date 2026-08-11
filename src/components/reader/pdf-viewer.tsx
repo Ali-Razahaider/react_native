@@ -34,6 +34,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 ) {
   const theme = useTheme();
   const webRef = useRef<WebView>(null);
+  const readyRef = useRef(false);
+  const darkModeRef = useRef(darkMode);
   const [html, setHtml] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -59,6 +61,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     webRef.current?.postMessage(message);
   }, []);
 
+  // Keep the webview's theme in sync whenever the prop changes.
+  useEffect(() => {
+    darkModeRef.current = darkMode;
+    if (readyRef.current) {
+      sendToWeb(JSON.stringify({ type: 'setDarkMode', on: darkMode }));
+    }
+  }, [darkMode, sendToWeb]);
+
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
       let msg: Inbound;
@@ -69,6 +79,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }
       switch (msg.type) {
         case 'ready':
+          readyRef.current = true;
+          sendToWeb(JSON.stringify({ type: 'setDarkMode', on: darkModeRef.current }));
           FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
           })
@@ -124,6 +136,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       javaScriptEnabled
       domStorageEnabled
       allowsInlineMediaPlayback
+      scrollEnabled={false}
+      overScrollMode="never"
+      bounces={false}
       onError={(syntheticEvent) => {
         const { description } = syntheticEvent.nativeEvent;
         onError?.(description);

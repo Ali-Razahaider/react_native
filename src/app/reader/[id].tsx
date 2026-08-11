@@ -6,6 +6,7 @@ import { PageControls } from '@/components/reader/page-controls';
 import { PdfViewer, type PdfViewerHandle } from '@/components/reader/pdf-viewer';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { useThemeMode } from '@/context/theme-mode-context';
 import { useTheme } from '@/hooks/use-theme';
 import { getBook } from '@/lib/library';
 import { getProgress, saveProgress } from '@/lib/progress-db';
@@ -13,6 +14,7 @@ import { type Book } from '@/lib/types';
 
 export default function ReaderScreen() {
   const theme = useTheme();
+  const { isDark } = useThemeMode();
   const { id } = useLocalSearchParams<{ id: string }>();
   const viewerRef = useRef<PdfViewerHandle>(null);
 
@@ -106,6 +108,7 @@ export default function ReaderScreen() {
             ref={viewerRef}
             uri={book.uri}
             initialPage={initialPage}
+            darkMode={isDark}
             onTotalPages={setTotalPages}
             onPageChange={onPageChange}
             onError={setError}

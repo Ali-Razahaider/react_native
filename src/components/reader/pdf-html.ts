@@ -12,8 +12,19 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
-  html, body { margin: 0; padding: 0; background: #1c1c1f; height: 100%; overflow: hidden; touch-action: none; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; touch-action: none; }
+  body { background: #f2f3f5; }
+  body.dark { background: #000000; }
   #page-wrap { position: relative; width: 100%; height: 100%; touch-action: none; }
+  #stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
   canvas {
     position: absolute;
     top: 50%;
@@ -30,8 +41,10 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
 </head>
 <body>
 <div id="page-wrap">
-  <canvas id="pdf-canvas"></canvas>
-  <canvas id="pdf-canvas-b"></canvas>
+  <div id="stage">
+    <canvas id="pdf-canvas"></canvas>
+    <canvas id="pdf-canvas-b"></canvas>
+  </div>
 </div>
 <script>${safePdfJs}</script>
 <script>
@@ -124,6 +137,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   }
 
   function openPdf(base64, initialPage) {
+    resetZoom();
     pdfjsLib.getDocument({ data: base64ToUint8Array(base64) }).promise.then(function (doc) {
       pdfDoc = doc;
       post({ type: 'totalPages', totalPages: doc.numPages });
@@ -134,35 +148,226 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   window.__openPdf = openPdf;
   window.__goToPage = renderPage;
   window.__flip = flip;
+  window.__resetZoom = resetZoom;
   window.__setDarkMode = function (on) {
     document.body.classList.toggle('dark', !!on);
   };
 
+  // --- Zoom & pan ---------------------------------------------------------
+  var zoom = 1;
+  var minZoom = 1;
+  var maxZoom = 3;
+  var panX = 0;
+  var panY = 0;
+
+  var stage = document.getElementById('stage');
+
+  function applyTransform() {
+    stage.style.transform =
+      'translate(' + panX + 'px, ' + panY + 'px) scale(' + zoom + ')';
+  }
+
+  function visibleCanvas() {
+    return canvases[front];
+  }
+
+  function clampPan() {
+    var canvas = visibleCanvas();
+    var cw = parseFloat(canvas.style.width) || 0;
+    var ch = parseFloat(canvas.style.height) || 0;
+    var container = document.getElementById('page-wrap');
+    var vw = container.clientWidth || window.innerWidth;
+    var vh = container.clientHeight || window.innerHeight;
+    var maxX = Math.max(0, (cw * zoom - vw) / 2);
+    var maxY = Math.max(0, (ch * zoom - vh) / 2);
+    panX = Math.max(-maxX, Math.min(maxX, panX));
+    panY = Math.max(-maxY, Math.min(maxY, panY));
+  }
+
+  function resetZoom() {
+    zoom = 1;
+    panX = 0;
+    panY = 0;
+    applyTransform();
+  }
+
+  // After a gesture, drop pan in any dimension where the content fits the
+  // viewport again. This re-centers the page when zoomed back out without
+  // fighting focal anchoring while zoomed in.
+  function settlePan() {
+    var canvas = visibleCanvas();
+    var cw = parseFloat(canvas.style.width) || 0;
+    var ch = parseFloat(canvas.style.height) || 0;
+    var container = document.getElementById('page-wrap');
+    var vw = container.clientWidth || window.innerWidth;
+    var vh = container.clientHeight || window.innerHeight;
+    if (cw * zoom <= vw) panX = 0;
+    if (ch * zoom <= vh) panY = 0;
+    applyTransform();
+  }
+
+  // Keep the point under (fx, fy) fixed while changing scale to newZoom.
+  function zoomAround(fx, fy, newZoom) {
+    // Screen coords: p' = (p - pan) * zoom, so p = pan + p' / zoom.
+    // We want the content point under the focal point to stay put.
+    panX = fx - ((fx - panX) / zoom) * newZoom;
+    panY = fy - ((fy - panY) / zoom) * newZoom;
+    zoom = newZoom;
+    applyTransform();
+  }
+
+  var touches = {};
+  var pinchStartDist = 0;
+  var pinchStartZoom = 1;
+  var pinchStartPanX = 0;
+  var pinchStartPanY = 0;
+  var pinchMidX = 0;
+  var pinchMidY = 0;
+  var swiping = false;
+  var lastTapTime = 0;
+  var lastTapX = 0;
+  var lastTapY = 0;
   var touchStartX = 0;
   var touchStartY = 0;
   var touchActive = false;
 
+  function touchDistance() {
+    var ids = Object.keys(touches);
+    if (ids.length < 2) return 0;
+    var a = touches[ids[0]];
+    var b = touches[ids[1]];
+    return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+  }
+
   document.addEventListener('touchstart', function (e) {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    touchActive = true;
-  });
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      touches[e.changedTouches[i].identifier] = e.changedTouches[i];
+    }
+    swiping = false;
+
+    if (Object.keys(touches).length === 2) {
+      e.preventDefault();
+      pinchStartDist = touchDistance();
+      pinchStartZoom = zoom;
+      pinchStartPanX = panX;
+      pinchStartPanY = panY;
+      var ids = Object.keys(touches);
+      pinchMidX = (touches[ids[0]].clientX + touches[ids[1]].clientX) / 2;
+      pinchMidY = (touches[ids[0]].clientY + touches[ids[1]].clientY) / 2;
+    } else if (Object.keys(touches).length === 1) {
+      touchStartX = e.changedTouches[0].clientX;
+      touchStartY = e.changedTouches[0].clientY;
+      touchActive = true;
+    }
+  }, { passive: false });
 
   document.addEventListener('touchmove', function (e) {
-    if (!touchActive) return;
-    var dx = e.touches[0].clientX - touchStartX;
-    var dy = e.touches[0].clientY - touchStartY;
-    if (Math.abs(dx) > 40 || Math.abs(dy) > 40) {
-      e.preventDefault();
-      touchActive = false;
-      var direction = dx < 0 ? 'next' : 'prev';
-      flip(direction);
-    }
-  });
+    var count = Object.keys(touches).length;
 
-  document.addEventListener('touchend', function () {
+    if (count === 2 && pinchStartDist > 0) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        touches[e.changedTouches[i].identifier] = e.changedTouches[i];
+      }
+      e.preventDefault();
+      var ratio = touchDistance() / pinchStartDist;
+      var newZoom = Math.max(minZoom, Math.min(maxZoom, pinchStartZoom * ratio));
+      var factor = newZoom / pinchStartZoom;
+
+      // Zoom around the pinch's INITIAL midpoint (a fixed anchor), not the
+      // moving midpoint. This keeps the point you started pinching at pinned
+      // to the same screen spot, so finger drift doesn't scroll the page.
+      panX = pinchMidX - (pinchMidX - pinchStartPanX) * factor;
+      panY = pinchMidY - (pinchMidY - pinchStartPanY) * factor;
+      zoom = newZoom;
+      applyTransform();
+      return;
+    }
+
+    if (count === 1 && zoom > 1.01) {
+      // When zoomed in, a single-finger drag pans instead of flipping pages.
+      e.preventDefault();
+      var id = e.changedTouches[0].identifier;
+      var prev = touches[id];
+      if (prev) {
+        panX += e.changedTouches[0].clientX - prev.clientX;
+        panY += e.changedTouches[0].clientY - prev.clientY;
+      }
+      touches[id] = e.changedTouches[0];
+      clampPan();
+      applyTransform();
+      return;
+    }
+
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      touches[e.changedTouches[i].identifier] = e.changedTouches[i];
+    }
+
+    if (count === 1 && touchActive) {
+      var dx = e.changedTouches[0].clientX - touchStartX;
+      var dy = e.changedTouches[0].clientY - touchStartY;
+      // Only a horizontal swipe flips pages; vertical drags are ignored.
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+        e.preventDefault();
+        touchActive = false;
+        swiping = true;
+        var direction = dx < 0 ? 'next' : 'prev';
+        flip(direction);
+      }
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', function (e) {
+    var endTouch = e.changedTouches[0];
+
+    if (!swiping && !touchActive && Object.keys(touches).length === 2) {
+      // One finger lifted after a pinch: switch to single-finger pan.
+      touchActive = false;
+    }
+
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      delete touches[e.changedTouches[i].identifier];
+    }
+
+    // Double-tap toggles zoom (1x <-> ~2.5x) around the tap point.
+    if (!swiping && !pinchStartDist) {
+      var dx2 = endTouch.clientX - touchStartX;
+      var dy2 = endTouch.clientY - touchStartY;
+      var moved = Math.abs(dx2) + Math.abs(dy2);
+      var now = Date.now();
+      if (moved < 16) {
+        if (now - lastTapTime < 300) {
+          var target = zoom > 1.01 ? 1 : 2.5;
+          zoomAround(endTouch.clientX, endTouch.clientY, target);
+          lastTapTime = 0;
+        } else {
+          lastTapTime = now;
+          lastTapX = endTouch.clientX;
+          lastTapY = endTouch.clientY;
+        }
+      } else {
+        lastTapTime = 0;
+      }
+    }
+
+    // Re-center any dimension that fits again (e.g. after zooming back out).
+    // This doesn't fight focal anchoring while zoomed in, so no jump.
+    if (!swiping) {
+      settlePan();
+    }
+    pinchStartDist = 0;
     touchActive = false;
-  });
+    swiping = false;
+  }, { passive: false });
+
+  document.addEventListener('touchcancel', function () {
+    touches = {};
+    pinchStartDist = 0;
+    touchActive = false;
+    swiping = false;
+    settlePan();
+  }, { passive: false });
+
+  applyTransform();
 
   document.addEventListener('message', function (e) {
     var msg;
