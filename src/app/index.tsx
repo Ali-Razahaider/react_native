@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { BrandLoader } from "@/components/brand/brand-loader";
 import { BookCard } from "@/components/library/book-card";
 import { EmptyState } from "@/components/library/empty-state";
 import { ThemedText } from "@/components/themed-text";
@@ -88,7 +89,7 @@ export default function LibraryScreen() {
 
         {loading ? (
           <View style={styles.center}>
-            <ThemedText type="small">Loading...</ThemedText>
+            <BrandLoader size={96} />
           </View>
         ) : error ? (
           <View style={styles.center}>
