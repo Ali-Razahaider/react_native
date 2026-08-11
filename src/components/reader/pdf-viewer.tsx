@@ -15,6 +15,7 @@ export type PdfViewerHandle = {
 
 type PdfViewerProps = {
   uri: string;
+  initialPage?: number;
   darkMode?: boolean;
   onTotalPages?: (totalPages: number) => void;
   onPageChange?: (page: number) => void;
@@ -28,7 +29,7 @@ type Inbound =
   | { type: 'error'; message: string };
 
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer(
-  { uri, darkMode = false, onTotalPages, onPageChange, onError },
+  { uri, initialPage = 1, darkMode = false, onTotalPages, onPageChange, onError },
   ref,
 ) {
   const theme = useTheme();
@@ -72,7 +73,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
             encoding: FileSystem.EncodingType.Base64,
           })
             .then((base64) => {
-              sendToWeb(JSON.stringify({ type: 'openPdf', data: base64 }));
+              sendToWeb(
+                JSON.stringify({ type: 'openPdf', data: base64, initialPage }),
+              );
             })
             .catch((e) => {
               const message = e instanceof Error ? e.message : String(e);
@@ -90,7 +93,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           break;
       }
     },
-    [uri, onPageChange, onTotalPages, onError, sendToWeb],
+    [uri, initialPage, onPageChange, onTotalPages, onError, sendToWeb],
   );
 
   useImperativeHandle(

@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { getBook } from '@/lib/library';
+import { getProgress, saveProgress } from '@/lib/progress-db';
 import { type Book } from '@/lib/types';
 
 export default function ReaderScreen() {
@@ -20,17 +21,22 @@ export default function ReaderScreen() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [initialPage, setInitialPage] = useState(1);
+
+  const bookId = book?.id ?? id ?? '';
 
   useEffect(() => {
     if (!id) return;
     let mounted = true;
-    getBook(id)
-      .then((found) => {
+    Promise.all([getBook(id), getProgress(id)])
+      .then(([found, progress]) => {
         if (!mounted) return;
         if (!found) {
           setError('This book is missing.');
         } else {
           setBook(found);
+          const resumeAt = progress?.lastPage ?? found.lastPage ?? 0;
+          setInitialPage(Math.max(1, resumeAt));
         }
       })
       .catch(() => {
@@ -50,6 +56,33 @@ export default function ReaderScreen() {
     setPage(next);
     viewerRef.current?.goToPage(next);
   }, [totalPages]);
+
+  const saveDebouncedRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleSave = useCallback(
+    (pageNum: number) => {
+      if (!bookId) return;
+      if (saveDebouncedRef.current) clearTimeout(saveDebouncedRef.current);
+      saveDebouncedRef.current = setTimeout(() => {
+        saveProgress(bookId, pageNum, totalPages);
+      }, 500);
+    },
+    [bookId, totalPages],
+  );
+
+  const onPageChange = useCallback(
+    (next: number) => {
+      setPage(next);
+      scheduleSave(next);
+    },
+    [scheduleSave],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (saveDebouncedRef.current) clearTimeout(saveDebouncedRef.current);
+    };
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -72,8 +105,9 @@ export default function ReaderScreen() {
           <PdfViewer
             ref={viewerRef}
             uri={book.uri}
+            initialPage={initialPage}
             onTotalPages={setTotalPages}
-            onPageChange={setPage}
+            onPageChange={onPageChange}
             onError={setError}
           />
           {totalPages > 0 && (

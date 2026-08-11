@@ -71,12 +71,12 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     });
   }
 
-  function openPdf(base64) {
+  function openPdf(base64, initialPage) {
     var data = base64ToUint8Array(base64);
     pdfjsLib.getDocument({ data: data }).promise.then(function (doc) {
       pdfDoc = doc;
       post({ type: 'totalPages', totalPages: doc.numPages });
-      renderPage(1);
+      renderPage(initialPage || 1);
     }).catch(function (err) {
       post({ type: 'error', message: String((err && err.message) || err) });
     });
@@ -91,7 +91,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   document.addEventListener('message', function (e) {
     var msg;
     try { msg = JSON.parse(e.data); } catch (_) { return; }
-    if (msg.type === 'openPdf') openPdf(msg.data);
+    if (msg.type === 'openPdf') openPdf(msg.data, msg.initialPage);
     else if (msg.type === 'goToPage') renderPage(msg.page);
     else if (msg.type === 'setDarkMode') window.__setDarkMode(msg.on);
   });
