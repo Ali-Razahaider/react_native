@@ -8,6 +8,7 @@ import { type Book } from '@/lib/types';
 type Props = {
   book: Book;
   onPress: () => void;
+  onLongPress: () => void;
 };
 
 function formatSize(bytes: number) {
@@ -15,12 +16,14 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function BookCard({ book, onPress }: Props) {
+export function BookCard({ book, onPress, onLongPress }: Props) {
   const theme = useTheme();
 
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       accessibilityRole="button"
       accessibilityLabel={`Open ${book.title}`}
       style={({ pressed }) => [

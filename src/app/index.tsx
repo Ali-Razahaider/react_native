@@ -1,7 +1,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import { FlatList, Modal, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/brand/brand-header";
@@ -13,7 +13,7 @@ import { ThemedView } from "@/components/themed-view";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MaxContentWidth, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { importBook, listBooks } from "@/lib/library";
+import { deleteBook, importBook, listBooks, removeBookFromLibrary } from "@/lib/library";
 import { type Book } from "@/lib/types";
 
 export default function LibraryScreen() {
@@ -21,6 +21,7 @@ export default function LibraryScreen() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [menuBook, setMenuBook] = useState<Book | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -73,6 +74,24 @@ export default function LibraryScreen() {
 
   const countLabel = `${books.length} ${books.length === 1 ? "book" : "books"}`;
 
+  const handleRemoveFromLibrary = useCallback(
+    async (book: Book) => {
+      setMenuBook(null);
+      await removeBookFromLibrary(book.id);
+      refresh();
+    },
+    [refresh],
+  );
+
+  const handleDeletePermanently = useCallback(
+    async (book: Book) => {
+      setMenuBook(null);
+      await deleteBook(book.id);
+      refresh();
+    },
+    [refresh],
+  );
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -114,6 +133,7 @@ export default function LibraryScreen() {
               <BookCard
                 book={item}
                 onPress={() => router.push(`/reader/${item.id}`)}
+                onLongPress={() => setMenuBook(item)}
               />
             )}
           />
@@ -132,6 +152,39 @@ export default function LibraryScreen() {
             <ThemedText style={styles.addLabel}>+</ThemedText>
           </Pressable>
         )}
+
+        <Modal
+          visible={menuBook !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMenuBook(null)}>
+          <Pressable style={styles.menuBackdrop} onPress={() => setMenuBook(null)}>
+            <View style={[styles.menuSheet, { backgroundColor: theme.surfaceElevated }]}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.menuTitle}>
+                {menuBook?.title}
+              </ThemedText>
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={() => menuBook && handleRemoveFromLibrary(menuBook)}>
+                <ThemedText type="default">Remove from library</ThemedText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={() => menuBook && handleDeletePermanently(menuBook)}>
+                <ThemedText type="default" themeColor="danger">
+                  Delete permanently
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={() => setMenuBook(null)}>
+                <ThemedText type="default" themeColor="textSecondary">
+                  Cancel
+                </ThemedText>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </ThemedView>
   );
@@ -189,5 +242,27 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 28,
     lineHeight: 32,
+  },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  menuSheet: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.four,
+    gap: Spacing.half,
+  },
+  menuTitle: {
+    paddingBottom: Spacing.one,
+  },
+  menuItem: {
+    paddingVertical: Spacing.two,
+  },
+  menuItemPressed: {
+    opacity: 0.6,
   },
 });

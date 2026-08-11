@@ -60,3 +60,7 @@ export async function saveProgress(
     Date.now(),
   );
 }
+
+export async function deleteProgress(bookId: string): Promise<void> {
+  await getDb().runAsync('DELETE FROM progress WHERE book_id = ?', bookId);
+}

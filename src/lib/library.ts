@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 import { type Book } from '@/lib/types';
+import { deleteProgress } from '@/lib/progress-db';
 
 const isWeb = Platform.OS === 'web';
 
@@ -104,6 +105,26 @@ export async function importBook(picked: {
   return book;
 }
 
+// Remove a book from the app's library index (and saved progress) but keep
+// the underlying file on disk, so it can be re-imported later.
+export async function removeBookFromLibrary(id: string): Promise<boolean> {
+  if (isWeb) return false;
+
+  const index = await loadIndex();
+  if (!index[id]) return false;
+
+  delete index[id];
+  await saveIndex(index);
+  try {
+    await deleteProgress(id);
+  } catch {
+    // Ignore progress cleanup errors.
+  }
+  return true;
+}
+
+// Permanently delete a book: removes the file from disk, the library index,
+// and any saved progress.
 export async function deleteBook(id: string): Promise<boolean> {
   if (isWeb) return false;
 
@@ -119,5 +140,10 @@ export async function deleteBook(id: string): Promise<boolean> {
 
   delete index[id];
   await saveIndex(index);
+  try {
+    await deleteProgress(id);
+  } catch {
+    // Ignore progress cleanup errors.
+  }
   return true;
 }
