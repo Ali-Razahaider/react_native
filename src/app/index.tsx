@@ -1,4 +1,5 @@
 import * as DocumentPicker from "expo-document-picker";
+import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -108,7 +109,10 @@ export default function LibraryScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             renderItem={({ item }) => (
-              <BookCard book={item} onPress={() => {}} />
+              <BookCard
+                book={item}
+                onPress={() => router.push(`/reader/${item.id}`)}
+              />
             )}
           />
         )}
