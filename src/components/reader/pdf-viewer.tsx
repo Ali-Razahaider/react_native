@@ -19,6 +19,7 @@ type PdfViewerProps = {
   darkMode?: boolean;
   onTotalPages?: (totalPages: number) => void;
   onPageChange?: (page: number) => void;
+  onWordSelected?: (word: string) => void;
   onError?: (message: string) => void;
 };
 
@@ -26,10 +27,11 @@ type Inbound =
   | { type: 'ready' }
   | { type: 'pageRendered'; page: number }
   | { type: 'totalPages'; totalPages: number }
+  | { type: 'wordSelected'; word: string }
   | { type: 'error'; message: string };
 
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer(
-  { uri, initialPage = 1, darkMode = false, onTotalPages, onPageChange, onError },
+  { uri, initialPage = 1, darkMode = false, onTotalPages, onPageChange, onWordSelected, onError },
   ref,
 ) {
   const theme = useTheme();
@@ -100,12 +102,15 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         case 'totalPages':
           onTotalPages?.(msg.totalPages);
           break;
+        case 'wordSelected':
+          onWordSelected?.(msg.word);
+          break;
         case 'error':
           onError?.(msg.message);
           break;
       }
     },
-    [uri, initialPage, onPageChange, onTotalPages, onError, sendToWeb],
+    [uri, initialPage, onPageChange, onTotalPages, onWordSelected, onError, sendToWeb],
   );
 
   useImperativeHandle(

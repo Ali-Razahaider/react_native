@@ -391,7 +391,9 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     }
 
     // Double-tap toggles zoom (1x <-> ~2.5x) around the tap point.
-    if (!swiping && !pinchStartDist) {
+    // A long-press just fired: don't count this release as a tap, otherwise
+    // the next touch would be seen as a double-tap and zoom unexpectedly.
+    if (!swiping && !pinchStartDist && !longPressed) {
       var dx2 = endTouch.clientX - touchStartX;
       var dy2 = endTouch.clientY - touchStartY;
       var moved = Math.abs(dx2) + Math.abs(dy2);
@@ -428,6 +430,100 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     swiping = false;
     settlePan();
   }, { passive: false });
+
+  // --- Word lookup (long-press) ------------------------------------------
+  var LONG_PRESS_MS = 450;
+  var longPressTimer = null;
+  var longPressed = false;
+  var longPressX = 0;
+  var longPressY = 0;
+
+  function clearLongPress() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  // Find the smallest word containing the caret at (x, y). Returns null when
+  // the point isn't on a text node (e.g. page margins or the canvas gaps).
+  function wordAtPoint(x, y) {
+    var range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(x, y);
+    } else if (document.caretPositionFromPoint) {
+      var pos = document.caretPositionFromPoint(x, y);
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+      }
+    }
+    if (!range) return null;
+    var node = range.startContainer;
+    if (node.nodeType !== 3) return null;
+    var text = node.textContent;
+    var offset = range.startOffset;
+    var isWordChar = function (c) {
+      return !!c && /[A-Za-z0-9\u00C0-\u024F']/.test(c);
+    };
+    var start = offset;
+    while (start > 0 && isWordChar(text.charAt(start - 1))) start--;
+    var end = offset;
+    while (end < text.length && isWordChar(text.charAt(end))) end++;
+    if (start === end) return null;
+    var word = text.slice(start, end);
+    var wordRange = document.createRange();
+    wordRange.setStart(node, start);
+    wordRange.setEnd(node, end);
+    return { word: word, range: wordRange };
+  }
+
+  function fireLongPress(x, y) {
+    clearLongPress();
+    var hit = wordAtPoint(x, y);
+    var sel = window.getSelection();
+    if (!hit) {
+      // Long-press on empty space: just drop any previous highlight.
+      sel.removeAllRanges();
+      return;
+    }
+    sel.removeAllRanges();
+    sel.addRange(hit.range);
+    longPressed = true;
+    post({ type: 'wordSelected', word: hit.word });
+  }
+
+  document.addEventListener('touchstart', function (e) {
+    if (e.changedTouches.length !== 1) return;
+    var t = e.changedTouches[0];
+    longPressX = t.clientX;
+    longPressY = t.clientY;
+    clearLongPress();
+    longPressed = false;
+    longPressTimer = setTimeout(function () {
+      fireLongPress(longPressX, longPressY);
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function (e) {
+    if (!longPressTimer) return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - longPressX;
+    var dy = t.clientY - longPressY;
+    // Finger moved beyond a small slop: no longer a press, don't interrupt
+    // swipe/pinch/pan gestures.
+    if (Math.abs(dx) + Math.abs(dy) > 10) {
+      clearLongPress();
+    }
+  }, { passive: true });
+
+  function longPressEnd() {
+    clearLongPress();
+    longPressed = false;
+  }
+  document.addEventListener('touchend', longPressEnd, { passive: true });
+  document.addEventListener('touchcancel', longPressEnd, { passive: true });
 
   applyTransform();
 
