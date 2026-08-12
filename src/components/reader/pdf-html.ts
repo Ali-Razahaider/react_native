@@ -37,12 +37,40 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   }
   canvas.visible { opacity: 1; }
   body.dark canvas { filter: invert(1) hue-rotate(180deg); }
+  .textLayer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    overflow: hidden;
+    line-height: 1;
+    text-align: initial;
+    text-size-adjust: none;
+    transform-origin: 0 0;
+    z-index: 2;
+    touch-action: auto;
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+  .textLayer span, .textLayer br {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+  .textLayer ::selection {
+    background: rgba(32, 138, 239, 0.35);
+  }
 </style>
 </head>
 <body>
 <div id="page-wrap">
   <div id="stage">
+    <div class="textLayer" id="text-layer"></div>
     <canvas id="pdf-canvas"></canvas>
+    <div class="textLayer" id="text-layer-b"></div>
     <canvas id="pdf-canvas-b"></canvas>
   </div>
 </div>
@@ -81,7 +109,37 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     document.getElementById('pdf-canvas'),
     document.getElementById('pdf-canvas-b'),
   ];
+  var textLayers = [
+    document.getElementById('text-layer'),
+    document.getElementById('text-layer-b'),
+  ];
   var front = 0;
+
+  // Render the invisible, selectable text layer over a given canvas. The
+  // spans are transparent by default, so only selections become visible.
+  function renderTextLayerFor(canvas, page, viewport) {
+    var layer = document.getElementById(canvas.id === 'pdf-canvas' ? 'text-layer' : 'text-layer-b');
+    layer.innerHTML = '';
+    layer.style.setProperty('--scale-factor', String(viewport.scale));
+    return page.getTextContent().then(function (content) {
+      return pdfjsLib.renderTextLayer({
+        textContentSource: content,
+        container: layer,
+        viewport: viewport
+      }).promise;
+    });
+  }
+
+  // Show the text layer that matches the visible canvas; keep the buffered
+  // page's layer invisible and non-interactive so text can't be selected
+  // from the page that isn't on screen.
+  function syncLayers() {
+    for (var i = 0; i < 2; i++) {
+      var active = i === front;
+      textLayers[i].style.opacity = active ? '1' : '0';
+      textLayers[i].style.pointerEvents = active ? 'auto' : 'none';
+    }
+  }
 
   function renderInto(canvas, n) {
     return pdfDoc.getPage(n).then(function (page) {
@@ -98,7 +156,9 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
       canvas.style.height = viewport.height + 'px';
       var ctx = canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      return page.render({ canvasContext: ctx, viewport: viewport }).promise;
+      var pixels = page.render({ canvasContext: ctx, viewport: viewport }).promise;
+      var words = renderTextLayerFor(canvas, page, viewport);
+      return Promise.all([pixels, words]);
     });
   }
 
@@ -107,6 +167,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     renderInto(canvases[front], n).then(function () {
       currentPage = n;
       canvases[front].classList.add('visible');
+      syncLayers();
       post({ type: 'pageRendered', page: n });
     }).catch(postError);
   }
@@ -121,6 +182,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
       canvases[next].classList.add('visible');
       canvases[front].classList.remove('visible');
       front = next;
+      syncLayers();
       busy = false;
       post({ type: 'pageRendered', page: n });
     }).catch(function (err) {
