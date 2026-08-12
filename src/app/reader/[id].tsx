@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { PageControls } from '@/components/reader/page-controls';
 import { PdfViewer, type PdfViewerHandle } from '@/components/reader/pdf-viewer';
+import { WordLookup } from '@/components/reader/word-lookup';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useThemeMode } from '@/context/theme-mode-context';
@@ -24,6 +25,7 @@ export default function ReaderScreen() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [initialPage, setInitialPage] = useState(1);
+  const [lookupWord, setLookupWord] = useState<string | null>(null);
 
   const bookId = book?.id ?? id ?? '';
 
@@ -80,6 +82,10 @@ export default function ReaderScreen() {
     [scheduleSave],
   );
 
+  const onWordSelected = useCallback((next: string) => {
+    setLookupWord(next);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (saveDebouncedRef.current) clearTimeout(saveDebouncedRef.current);
@@ -111,8 +117,10 @@ export default function ReaderScreen() {
             darkMode={isDark}
             onTotalPages={setTotalPages}
             onPageChange={onPageChange}
+            onWordSelected={onWordSelected}
             onError={setError}
           />
+          <WordLookup key={lookupWord ?? 'none'} word={lookupWord} onClose={() => setLookupWord(null)} />
           {totalPages > 0 && (
             <PageControls
               page={page}
