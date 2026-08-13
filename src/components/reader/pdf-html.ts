@@ -207,10 +207,32 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     }).catch(postError);
   }
 
+  // Render page 1 to an offscreen canvas at a small size and send the JPEG
+  // back so the native side can use it as the book's icon/thumbnail.
+  function captureThumbnail() {
+    if (!pdfDoc) return;
+    var targetWidth = 240;
+    pdfDoc.getPage(1).then(function (page) {
+      var base = page.getViewport({ scale: 1 });
+      var scale = targetWidth / base.width;
+      var viewport = page.getViewport({ scale: scale });
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
+        post({ type: 'thumbnail', data: canvas.toDataURL('image/jpeg', 0.7) });
+      }).catch(postError);
+    }).catch(postError);
+  }
+
   window.__openPdf = openPdf;
   window.__goToPage = renderPage;
   window.__flip = flip;
   window.__resetZoom = resetZoom;
+  window.__captureThumbnail = captureThumbnail;
   window.__setDarkMode = function (on) {
     document.body.classList.toggle('dark', !!on);
   };
@@ -534,6 +556,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     else if (msg.type === 'goToPage') renderPage(msg.page);
     else if (msg.type === 'flip') flip(msg.direction);
     else if (msg.type === 'setDarkMode') window.__setDarkMode(msg.on);
+    else if (msg.type === 'captureThumbnail') window.__captureThumbnail();
   });
 
   post({ type: 'ready' });

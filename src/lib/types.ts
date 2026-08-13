@@ -7,4 +7,5 @@ export type Book = {
   addedAt: number;
   lastPage: number;
   totalPages?: number;
+  thumbnailUri?: string;
 };

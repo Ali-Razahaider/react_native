@@ -71,6 +71,33 @@ export async function updateBook(id: string, patch: Partial<Book>): Promise<Book
   return index[id];
 }
 
+// Persist a page-1 thumbnail (data URL) next to the book file and record its
+// path on the Book record. Returns the new thumbnail URI, or null if the
+// write failed.
+export async function saveBookThumbnail(id: string, dataUrl: string): Promise<string | null> {
+  if (isWeb) return null;
+
+  await ensureBooksDir();
+
+  const match = /^data:image\/(\w+);base64,/.exec(dataUrl);
+  if (!match) return null;
+  const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+  const to = `${booksUri()}${id}.thumb.${ext}`;
+
+  try {
+    await FileSystem.writeAsStringAsync(
+      to,
+      dataUrl.slice(dataUrl.indexOf(',') + 1),
+      { encoding: FileSystem.EncodingType.Base64 },
+    );
+  } catch {
+    return null;
+  }
+
+  await updateBook(id, { thumbnailUri: to });
+  return to;
+}
+
 export async function importBook(picked: {
   uri: string;
   name: string;
@@ -136,6 +163,14 @@ export async function deleteBook(id: string): Promise<boolean> {
     await FileSystem.deleteAsync(book.uri, { idempotent: true });
   } catch {
     // Ignore file deletion errors; still remove from the index below.
+  }
+
+  if (book.thumbnailUri) {
+    try {
+      await FileSystem.deleteAsync(book.thumbnailUri, { idempotent: true });
+    } catch {
+      // Ignore thumbnail deletion errors.
+    }
   }
 
   delete index[id];
