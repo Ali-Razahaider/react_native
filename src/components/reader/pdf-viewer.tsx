@@ -11,6 +11,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 export type PdfViewerHandle = {
   goToPage: (page: number) => void;
+  captureThumbnail: () => Promise<string>;
 };
 
 type PdfViewerProps = {
@@ -28,6 +29,7 @@ type Inbound =
   | { type: 'pageRendered'; page: number }
   | { type: 'totalPages'; totalPages: number }
   | { type: 'wordSelected'; word: string }
+  | { type: 'thumbnail'; data: string }
   | { type: 'error'; message: string };
 
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer(
@@ -38,6 +40,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const webRef = useRef<WebView>(null);
   const readyRef = useRef(false);
   const darkModeRef = useRef(darkMode);
+  const thumbnailResolveRef = useRef<((data: string) => void) | null>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -102,6 +105,10 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         case 'totalPages':
           onTotalPages?.(msg.totalPages);
           break;
+        case 'thumbnail':
+          thumbnailResolveRef.current?.(msg.data);
+          thumbnailResolveRef.current = null;
+          break;
         case 'wordSelected':
           onWordSelected?.(msg.word);
           break;
@@ -117,6 +124,11 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     ref,
     () => ({
       goToPage: (page: number) => sendToWeb(JSON.stringify({ type: 'goToPage', page })),
+      captureThumbnail: () =>
+        new Promise<string>((resolve) => {
+          thumbnailResolveRef.current = resolve;
+          sendToWeb(JSON.stringify({ type: 'captureThumbnail' }));
+        }),
     }),
     [sendToWeb],
   );

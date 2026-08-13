@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -31,9 +31,17 @@ export function BookCard({ book, onPress, onLongPress }: Props) {
         { borderColor: theme.border },
         pressed && styles.pressed,
       ]}>
-      <View style={[styles.badge, { backgroundColor: theme.tint }]}>
-        <ThemedText style={styles.badgeText}>PDF</ThemedText>
-      </View>
+      {book.thumbnailUri ? (
+        <View style={[styles.badge, styles.badgeImageWrap]}>
+          <Image source={{ uri: book.thumbnailUri }} style={styles.badgeImage} resizeMode="cover" />
+        </View>
+      ) : (
+        <View style={[styles.badge, { backgroundColor: theme.tint }]}>
+          <ThemedText style={styles.badgeText} numberOfLines={3}>
+            {book.title}
+          </ThemedText>
+        </View>
+      )}
 
       <View style={styles.info}>
         <ThemedText type="default" numberOfLines={1}>
@@ -62,11 +70,21 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  badgeImageWrap: {
+    backgroundColor: '#ffffff',
+  },
+  badgeImage: {
+    width: '100%',
+    height: '100%',
   },
   badgeText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: '700',
+    textAlign: 'center',
+    paddingHorizontal: 4,
   },
   info: {
     flex: 1,
