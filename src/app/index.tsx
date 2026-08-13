@@ -72,8 +72,6 @@ export default function LibraryScreen() {
     }
   }, [refresh]);
 
-  const countLabel = `${books.length} ${books.length === 1 ? "book" : "books"}`;
-
   const handleRemoveFromLibrary = useCallback(
     async (book: Book) => {
       setMenuBook(null);
@@ -100,11 +98,6 @@ export default function LibraryScreen() {
             right={<ThemeToggle />}
             style={styles.headerBrand}
           />
-          {!loading && !error && books.length > 0 && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {countLabel}
-            </ThemedText>
-          )}
         </View>
 
         {loading ? (
@@ -204,7 +197,6 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: Spacing.two,
     paddingBottom: Spacing.three,
-    gap: Spacing.half,
   },
   headerBrand: {
     flexDirection: "row",
@@ -218,6 +210,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   listContent: {
+    paddingTop: Spacing.four,
     paddingBottom: Spacing.six,
   },
   addButton: {

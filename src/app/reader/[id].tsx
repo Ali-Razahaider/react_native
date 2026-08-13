@@ -11,7 +11,7 @@ import { type ThemeMode } from '@/constants/theme';
 import { Spacing } from '@/constants/theme';
 import { useThemeMode } from '@/context/theme-mode-context';
 import { useTheme } from '@/hooks/use-theme';
-import { getBook } from '@/lib/library';
+import { getBook, saveBookThumbnail } from '@/lib/library';
 import { getProgress, saveProgress } from '@/lib/progress-db';
 import { type Book } from '@/lib/types';
 
@@ -98,6 +98,22 @@ export default function ReaderScreen() {
     setLookupWord(next);
   }, []);
 
+  const thumbnailCapturedRef = useRef(false);
+
+  const onTotalPages = useCallback(
+    (next: number) => {
+      setTotalPages(next);
+      if (thumbnailCapturedRef.current) return;
+      thumbnailCapturedRef.current = true;
+      if (!bookId) return;
+      viewerRef.current
+        ?.captureThumbnail()
+        .then((dataUrl) => saveBookThumbnail(bookId, dataUrl))
+        .catch(() => {});
+    },
+    [bookId],
+  );
+
   useEffect(() => {
     return () => {
       if (saveDebouncedRef.current) clearTimeout(saveDebouncedRef.current);
@@ -132,7 +148,7 @@ export default function ReaderScreen() {
             uri={book.uri}
             initialPage={initialPage}
             darkMode={isDark}
-            onTotalPages={setTotalPages}
+            onTotalPages={onTotalPages}
             onPageChange={onPageChange}
             onWordSelected={onWordSelected}
             onError={setError}
