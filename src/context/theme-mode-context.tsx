@@ -17,6 +17,8 @@ type ThemeModeContextValue = {
   setMode: (mode: ThemeMode) => void;
   resolvedScheme: 'light' | 'dark';
   isDark: boolean;
+  override: 'light' | 'dark' | null;
+  setOverride: (scheme: 'light' | 'dark' | null) => void;
 };
 
 const ThemeModeContext = createContext<ThemeModeContextValue | null>(null);
@@ -53,16 +55,18 @@ function persistMode(mode: ThemeMode) {
 export function ThemeModeProvider({ children }: { children: ReactNode }) {
   const systemScheme = useColorScheme();
   const [mode, setMode] = useState<ThemeMode>(readPersistedMode);
+  const [override, setOverride] = useState<'light' | 'dark' | null>(null);
 
   useEffect(() => {
     persistMode(mode);
   }, [mode]);
 
   const value = useMemo<ThemeModeContextValue>(() => {
-    const resolvedScheme =
+    const base =
       mode === 'system' ? (systemScheme === 'dark' ? 'dark' : 'light') : mode;
-    return { mode, setMode, resolvedScheme, isDark: resolvedScheme === 'dark' };
-  }, [mode, systemScheme]);
+    const resolvedScheme = override ?? base;
+    return { mode, setMode, resolvedScheme, isDark: resolvedScheme === 'dark', override, setOverride };
+  }, [mode, systemScheme, override]);
 
   return <ThemeModeContext.Provider value={value}>{children}</ThemeModeContext.Provider>;
 }

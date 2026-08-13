@@ -4,8 +4,10 @@ import { StyleSheet, View } from 'react-native';
 
 import { PageControls } from '@/components/reader/page-controls';
 import { PdfViewer, type PdfViewerHandle } from '@/components/reader/pdf-viewer';
+import { ReaderHeader } from '@/components/reader/reader-header';
 import { WordLookup } from '@/components/reader/word-lookup';
 import { ThemedText } from '@/components/themed-text';
+import { type ThemeMode } from '@/constants/theme';
 import { Spacing } from '@/constants/theme';
 import { useThemeMode } from '@/context/theme-mode-context';
 import { useTheme } from '@/hooks/use-theme';
@@ -15,7 +17,7 @@ import { type Book } from '@/lib/types';
 
 export default function ReaderScreen() {
   const theme = useTheme();
-  const { isDark } = useThemeMode();
+  const { isDark, override, setOverride } = useThemeMode();
   const { id } = useLocalSearchParams<{ id: string }>();
   const viewerRef = useRef<PdfViewerHandle>(null);
 
@@ -26,6 +28,16 @@ export default function ReaderScreen() {
   const [totalPages, setTotalPages] = useState(0);
   const [initialPage, setInitialPage] = useState(1);
   const [lookupWord, setLookupWord] = useState<string | null>(null);
+
+  const readingMode: ThemeMode = override ?? 'system';
+  const onChangeMode = useCallback(
+    (next: ThemeMode) => setOverride(next === 'system' ? null : next),
+    [setOverride],
+  );
+
+  useEffect(() => {
+    return () => setOverride(null);
+  }, [setOverride]);
 
   const bookId = book?.id ?? id ?? '';
 
@@ -110,6 +122,11 @@ export default function ReaderScreen() {
         </View>
       ) : (
         <>
+          <ReaderHeader
+            title={book.title}
+            readingMode={readingMode}
+            onChangeMode={onChangeMode}
+          />
           <PdfViewer
             ref={viewerRef}
             uri={book.uri}
