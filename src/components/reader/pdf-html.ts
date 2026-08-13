@@ -255,6 +255,15 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     return canvases[front];
   }
 
+  // The canvas is centered in the stage (top:50%/left:50% + translate),
+  // but the stage scales around its top-left corner (transform-origin:0 0).
+  // So content screen-space bounds are:
+  //   left   = panX + zoom * (vw/2 - cw/2)
+  //   right  = panX + zoom * (vw/2 + cw/2)
+  // (and the same for Y). At zoom z the page is visually centered when
+  // pan = (vw/2, vh/2) * (1 - z), NOT when pan = 0. Clamping around 0
+  // snaps the page back toward the top-left whenever it is panned, which
+  // is why horizontal drags "reset to the top". Compute real bounds below.
   function clampPan() {
     var canvas = visibleCanvas();
     var cw = parseFloat(canvas.style.width) || 0;
@@ -262,10 +271,24 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     var container = document.getElementById('page-wrap');
     var vw = container.clientWidth || window.innerWidth;
     var vh = container.clientHeight || window.innerHeight;
-    var maxX = Math.max(0, (cw * zoom - vw) / 2);
-    var maxY = Math.max(0, (ch * zoom - vh) / 2);
-    panX = Math.max(-maxX, Math.min(maxX, panX));
-    panY = Math.max(-maxY, Math.min(maxY, panY));
+
+    if (cw * zoom <= vw) {
+      // Fits horizontally: pin to the centered position for this zoom.
+      panX = (vw - zoom * vw) / 2;
+    } else {
+      // Wider than the viewport: keep the content covering it, no gaps.
+      var minX = vw - (zoom * (vw + cw)) / 2;
+      var maxX = (zoom * (cw - vw)) / 2;
+      panX = Math.max(minX, Math.min(maxX, panX));
+    }
+
+    if (ch * zoom <= vh) {
+      panY = (vh - zoom * vh) / 2;
+    } else {
+      var minY = vh - (zoom * (vh + ch)) / 2;
+      var maxY = (zoom * (ch - vh)) / 2;
+      panY = Math.max(minY, Math.min(maxY, panY));
+    }
   }
 
   function resetZoom() {
@@ -275,18 +298,11 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     applyTransform();
   }
 
-  // After a gesture, drop pan in any dimension where the content fits the
-  // viewport again. This re-centers the page when zoomed back out without
-  // fighting focal anchoring while zoomed in.
+  // After a gesture, re-clamp: dimensions that now fit are re-centered,
+  // larger ones keep their current position. No jumps because clampPan
+  // uses the correct centered baseline for the current zoom.
   function settlePan() {
-    var canvas = visibleCanvas();
-    var cw = parseFloat(canvas.style.width) || 0;
-    var ch = parseFloat(canvas.style.height) || 0;
-    var container = document.getElementById('page-wrap');
-    var vw = container.clientWidth || window.innerWidth;
-    var vh = container.clientHeight || window.innerHeight;
-    if (cw * zoom <= vw) panX = 0;
-    if (ch * zoom <= vh) panY = 0;
+    clampPan();
     applyTransform();
   }
 
