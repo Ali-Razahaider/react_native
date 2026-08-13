@@ -24,6 +24,7 @@ export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     'Sora-Regular': require('@/assets/fonts/Sora-Regular.ttf'),
     'Sora-Bold': require('@/assets/fonts/Sora-Bold.ttf'),
+    'PlayfairDisplay-Bold': require('@/assets/fonts/PlayfairDisplay-Bold.ttf'),
   });
 
   if (!fontsLoaded && !fontError) {

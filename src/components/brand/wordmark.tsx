@@ -9,15 +9,11 @@ type WordmarkProps = {
 
 export function Wordmark({ light = false, size = 28 }: WordmarkProps) {
   const theme = useTheme();
-  const mainColor = light ? '#ffffff' : theme.text;
-  const subColor = light ? 'rgba(255,255,255,0.72)' : theme.textSecondary;
+  const color = light ? '#ffffff' : theme.text;
 
   return (
     <View style={styles.row}>
-      <Text style={[styles.main, { color: mainColor, fontSize: size }]}>PDF</Text>
-      <Text style={[styles.sub, { color: subColor, fontSize: size * 0.8 }]}>
-        Viewer
-      </Text>
+      <Text style={[styles.main, { color, fontSize: size }]}>Lumio</Text>
     </View>
   );
 }
@@ -28,12 +24,7 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   main: {
-    fontFamily: 'Sora-Bold',
-    letterSpacing: -1,
-  },
-  sub: {
-    fontFamily: 'Sora-Regular',
-    marginLeft: 6,
-    letterSpacing: 0.2,
+    fontFamily: 'PlayfairDisplay-Bold',
+    letterSpacing: -0.5,
   },
 });
