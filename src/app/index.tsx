@@ -1,6 +1,6 @@
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Modal, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -8,6 +8,7 @@ import { BrandHeader } from "@/components/brand/brand-header";
 import { BrandLoader } from "@/components/brand/brand-loader";
 import { BookCard } from "@/components/library/book-card";
 import { EmptyState } from "@/components/library/empty-state";
+import { SortControl, type SortMode } from "@/components/library/sort-control";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -22,6 +23,14 @@ export default function LibraryScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [menuBook, setMenuBook] = useState<Book | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("recent");
+
+  const sortedBooks = useMemo(() => {
+    const list = [...books];
+    if (sortMode === "az") list.sort((a, b) => a.title.localeCompare(b.title));
+    if (sortMode === "za") list.sort((a, b) => b.title.localeCompare(a.title));
+    return list;
+  }, [books, sortMode]);
 
   const refresh = useCallback(async () => {
     try {
@@ -119,9 +128,17 @@ export default function LibraryScreen() {
           <EmptyState onAdd={handleAdd} />
         ) : (
           <FlatList
-            data={books}
+            data={sortedBooks}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
+            ListHeaderComponent={
+              <View style={[styles.sectionHeader, { borderBottomColor: theme.border }]}>
+                <ThemedText type="default" style={styles.sectionTitle}>
+                  Your library
+                </ThemedText>
+                <SortControl value={sortMode} onChange={setSortMode} />
+              </View>
+            }
             renderItem={({ item }) => (
               <BookCard
                 book={item}
@@ -210,8 +227,19 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   listContent: {
-    paddingTop: Spacing.four,
+    paddingTop: Spacing.three,
     paddingBottom: Spacing.six,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: Spacing.two,
+    marginBottom: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sectionTitle: {
+    fontWeight: "700",
   },
   addButton: {
     position: "absolute",
