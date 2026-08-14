@@ -63,6 +63,21 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   .textLayer ::selection {
     background: rgba(32, 138, 239, 0.35);
   }
+  #hl {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    transform-origin: 0 0;
+    z-index: 3;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  #hl div {
+    position: absolute;
+    background: rgba(32, 138, 239, 0.35);
+    border-radius: 2px;
+  }
 </style>
 </head>
 <body>
@@ -72,6 +87,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     <canvas id="pdf-canvas"></canvas>
     <div class="textLayer" id="text-layer-b"></div>
     <canvas id="pdf-canvas-b"></canvas>
+    <div id="hl"></div>
   </div>
 </div>
 <script>${safePdfJs}</script>
@@ -94,6 +110,10 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     if (window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify(msg));
     }
+  }
+
+  function dbg(msg) {
+    post({ type: 'debug', message: String(msg) });
   }
 
   function postError(err) {
@@ -199,6 +219,12 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
       canvas.height = viewport.height * dpr;
       canvas.style.width = viewport.width + 'px';
       canvas.style.height = viewport.height + 'px';
+      // Size the highlight overlay to the same box as the text layer so child
+      // divs positioned in layer-local coordinates land exactly on the word.
+      var hl = document.getElementById('hl');
+      hl.style.width = viewport.width + 'px';
+      hl.style.height = viewport.height + 'px';
+      hl.innerHTML = '';
       var ctx = canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var pixels = page.render({ canvasContext: ctx, viewport: viewport }).promise;
@@ -516,11 +542,13 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   }, { passive: false });
 
   // --- Word lookup (long-press) ------------------------------------------
-  var LONG_PRESS_MS = 450;
+  var LONG_PRESS_MS = 380;
   var longPressTimer = null;
   var longPressed = false;
+  var longPressedDelivered = false;
   var longPressX = 0;
   var longPressY = 0;
+  var longPressStart = 0;
 
   function clearLongPress() {
     if (longPressTimer) {
@@ -529,53 +557,94 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     }
   }
 
-  // Find the smallest word containing the caret at (x, y). Returns null when
-  // the point isn't on a text node (e.g. page margins or the canvas gaps).
+  // Run the selection now, exactly once, no matter which signal gets here
+  // first (our timer, Android's touchcancel, or its synthetic contextmenu).
+  function deliverLongPressNow() {
+    if (longPressed || longPressedDelivered) return true; // already handled
+    clearLongPress();
+    fireLongPress(longPressX, longPressY);
+    longPressedDelivered = true;
+    return longPressed;
+  }
+
+  // Hit-test a screen-space point against the current page's word boxes. Boxes
+  // are stored in text-layer-local coordinates, so convert the point the same
+  // way by subtracting the visible text layer's bounding rect.
+  // Two passes: first, a word whose box strictly contains the point always
+  // wins (most specific). Only when the touch lands in the slop band between
+  // words do we fall back to nearest-center so a long press on the edge of a
+  // long word after a short one (e.g. "a university") isn't hijacked by the
+  // smaller neighbor to the left.
   function wordAtPoint(x, y) {
-    var range = null;
-    if (document.caretRangeFromPoint) {
-      range = document.caretRangeFromPoint(x, y);
-    } else if (document.caretPositionFromPoint) {
-      var pos = document.caretPositionFromPoint(x, y);
-      if (pos) {
-        range = document.createRange();
-        range.setStart(pos.offsetNode, pos.offset);
-        range.collapse(true);
+    var words = pageWordCache[currentPage];
+    if (!words || words.length === 0) return null;
+    var layer = textLayers[front];
+    if (!layer) return null;
+    var layerRect = layer.getBoundingClientRect();
+    // Touch points are in viewport coords; boxes are stored in layer-local
+    // coords normalized by zoom, so apply the same normalization here.
+    var px = (x - layerRect.left) / zoom;
+    var py = (y - layerRect.top) / zoom;
+    var best = null;
+    var bestArea = Infinity;
+    // Pass 1: strict containment.
+    for (var i = 0; i < words.length; i++) {
+      var w = words[i];
+      if (px >= w.x && px <= w.x + w.w && py >= w.y && py <= w.y + w.h) {
+        var area = w.w * w.h;
+        if (area < bestArea) {
+          bestArea = area;
+          best = w;
+        }
       }
     }
-    if (!range) return null;
-    var node = range.startContainer;
-    if (node.nodeType !== 3) return null;
-    var text = node.textContent;
-    var offset = range.startOffset;
-    var isWordChar = function (c) {
-      return !!c && /[A-Za-z0-9\u00C0-\u024F']/.test(c);
-    };
-    var start = offset;
-    while (start > 0 && isWordChar(text.charAt(start - 1))) start--;
-    var end = offset;
-    while (end < text.length && isWordChar(text.charAt(end))) end++;
-    if (start === end) return null;
-    var word = text.slice(start, end);
-    var wordRange = document.createRange();
-    wordRange.setStart(node, start);
-    wordRange.setEnd(node, end);
-    return { word: word, range: wordRange };
+    if (best) return best;
+    // Pass 2: generous hit area for small-cap words; nearest center wins.
+    var slop = Math.max(4, Math.min(10, (layerRect.height + layerRect.width) * 0.004)) / zoom;
+    var bestDist = Infinity;
+    for (var j = 0; j < words.length; j++) {
+      var sw = words[j];
+      if (px >= sw.x - slop && px <= sw.x + sw.w + slop && py >= sw.y - slop && py <= sw.y + sw.h + slop) {
+        var ddx = px - (sw.x + sw.w / 2);
+        var ddy = py - (sw.y + sw.h / 2);
+        var dist = ddx * ddx + ddy * ddy;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = sw;
+        }
+      }
+    }
+    return best;
+  }
+
+  function drawHighlight(word) {
+    var hl = document.getElementById('hl');
+    hl.innerHTML = '';
+    var div = document.createElement('div');
+    div.style.left = word.x + 'px';
+    div.style.top = word.y + 'px';
+    div.style.width = word.w + 'px';
+    div.style.height = word.h + 'px';
+    hl.appendChild(div);
   }
 
   function fireLongPress(x, y) {
-    clearLongPress();
-    var hit = wordAtPoint(x, y);
-    var sel = window.getSelection();
-    if (!hit) {
-      // Long-press on empty space: just drop any previous highlight.
-      sel.removeAllRanges();
+    var words = pageWordCache[currentPage];
+    // Rendered page with zero word boxes (scanned/image-only page): let the
+    // native side tell the user instead of silently doing nothing.
+    if (words && words.length === 0) {
+      post({ type: 'noSelectableText' });
       return;
     }
-    sel.removeAllRanges();
-    sel.addRange(hit.range);
+    var word = wordAtPoint(x, y);
+    if (!word) {
+      // A long-press on empty space just drops any previous highlight.
+      document.getElementById('hl').innerHTML = '';
+      return;
+    }
+    drawHighlight(word);
     longPressed = true;
-    post({ type: 'wordSelected', word: hit.word });
+    post({ type: 'wordSelected', word: word.word });
   }
 
   document.addEventListener('touchstart', function (e) {
@@ -583,10 +652,13 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     var t = e.changedTouches[0];
     longPressX = t.clientX;
     longPressY = t.clientY;
+    longPressStart = Date.now();
     clearLongPress();
     longPressed = false;
+    longPressedDelivered = false;
     longPressTimer = setTimeout(function () {
-      fireLongPress(longPressX, longPressY);
+      longPressTimer = null;
+      deliverLongPressNow();
     }, LONG_PRESS_MS);
   }, { passive: true });
 
@@ -607,7 +679,30 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     longPressed = false;
   }
   document.addEventListener('touchend', longPressEnd, { passive: true });
-  document.addEventListener('touchcancel', longPressEnd, { passive: true });
+  document.addEventListener('touchcancel', function (e) {
+    // Android pre-empts long-presses with its own handling (the haptic you
+    // feel) BEFORE our timer runs, then fires touchcancel. If the finger was
+    // held long enough, treat the cancel as the long-press trigger; otherwise
+    // it's a genuine cancel.
+    var delivered = false;
+    if (longPressTimer) {
+      var held = Date.now() - longPressStart;
+      if (held >= 140) delivered = deliverLongPressNow();
+    }
+    if (!delivered) longPressEnd();
+  }, { passive: true });
+
+  // Android Q+ also fires a synthetic contextmenu on long-press. Swallow it
+  // so the browser's native text-selection callout never appears, and use it
+  // as the trigger if our timer hasn't fired yet.
+  document.addEventListener('contextmenu', function (e) {
+    if (e.cancelable) e.preventDefault();
+    if (e.clientX >= 0 && e.clientY >= 0) {
+      longPressX = e.clientX;
+      longPressY = e.clientY;
+    }
+    deliverLongPressNow();
+  }, { passive: false });
 
   applyTransform();
 
