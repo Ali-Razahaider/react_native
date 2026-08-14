@@ -173,6 +173,32 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
       if (!node || node.nodeType !== 3) continue;
       var text = node.textContent;
       if (!text) continue;
+      // pdf.js compensates for letter-spacing by scaling each span about its
+      // center (transform: scaleX(...)) so the layer's width matches the
+      // canvas. getBoundingClientRect therefore reports positions squeezed or
+      // stretched around the span center, a few px off the glyphs on screen.
+      // Un-map that per span so hit-testing matches the pixels the user sees.
+      var k = 1;
+      var centerX = 0;
+      var cs = window.getComputedStyle(span);
+      if (cs) {
+        var tm = cs.transform;
+        if (tm && tm !== 'none') {
+          var mx = tm.match(/matrix\(([^)]+)\)/);
+          if (mx) {
+            var parts = mx[1].split(',').map(function (s) { return parseFloat(s); });
+            // matrix(a,b,c,d,e,f): a is scaleX; b/c nonzero means rotation,
+            // which we can't correct here, so leave those spans untouched.
+            if (parts.length === 6 && Math.abs(parts[1]) < 0.001 && Math.abs(parts[2]) < 0.001 && Math.abs(parts[0]) > 0.0001) {
+              k = parts[0];
+            }
+          }
+        }
+      }
+      if (k !== 1) {
+        var srect = span.getBoundingClientRect();
+        centerX = srect.left - layerRect.left + srect.width / 2;
+      }
       // March through words in the run of text inside this span.
       var re = /[A-Za-z]+(?:['\u2019-][A-Za-z]+)*/g;
       var m;
@@ -182,11 +208,17 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
         range.setEnd(node, m.index + m[0].length);
         var rect = range.getBoundingClientRect();
         if (!rect || rect.width === 0 || rect.height === 0) continue;
+        var x = rect.left - layerRect.left;
+        var w = rect.width;
+        if (k !== 1) {
+          x = centerX + (x - centerX) / k;
+          w = w / k;
+        }
         var word = {
           word: m[0],
-          x: (rect.left - layerRect.left) / scale,
+          x: x / scale,
           y: (rect.top - layerRect.top) / scale,
-          w: rect.width / scale,
+          w: w / scale,
           h: rect.height / scale,
         };
         if (words.length < 30000) words.push(word);
