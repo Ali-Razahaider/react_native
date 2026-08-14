@@ -104,6 +104,11 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   var currentPage = 1;
   var busy = false;
 
+  // Word boxes for each rendered page, keyed by page number. Built from the
+  // transparent text layer's own geometry (see buildWords) so hit-testing
+  // always matches the pixels on screen — no OCR, no browser caret heuristics.
+  var pageWordCache = {};
+
   // Two stacked canvases. front is the index of the visible one.
   var canvases = [
     document.getElementById('pdf-canvas'),
@@ -117,7 +122,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
 
   // Render the invisible, selectable text layer over a given canvas. The
   // spans are transparent by default, so only selections become visible.
-  function renderTextLayerFor(canvas, page, viewport) {
+  function renderTextLayerFor(canvas, page, viewport, pageIndex) {
     var layer = document.getElementById(canvas.id === 'pdf-canvas' ? 'text-layer' : 'text-layer-b');
     layer.innerHTML = '';
     layer.style.setProperty('--scale-factor', String(viewport.scale));
@@ -127,7 +132,47 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
         container: layer,
         viewport: viewport
       }).promise;
+    }).then(function () {
+      pageWordCache[pageIndex] = buildWordBoxes(layer, zoom);
     });
+  }
+
+  // Build per-word bounding boxes from the rendered text layer. Each word's
+  // box comes from Range.getBoundingClientRect on the transparent span text,
+  // so it agrees with pdf.js's own layout (including scaleX/rotate transforms
+  // it applies to spans) and with the canvas the user actually sees. Rects are
+  // normalized by the zoom that was active during rendering, yielding stable
+  // layer-local coordinates that hit-testing divides by the *current* zoom.
+  function buildWordBoxes(layer, scale) {
+    var words = [];
+    var layerRect = layer.getBoundingClientRect();
+    var spans = layer.querySelectorAll('span');
+    for (var i = 0; i < spans.length; i++) {
+      var span = spans[i];
+      var node = span.firstChild;
+      if (!node || node.nodeType !== 3) continue;
+      var text = node.textContent;
+      if (!text) continue;
+      // March through words in the run of text inside this span.
+      var re = /[A-Za-z]+(?:['\u2019-][A-Za-z]+)*/g;
+      var m;
+      while ((m = re.exec(text)) !== null) {
+        var range = document.createRange();
+        range.setStart(node, m.index);
+        range.setEnd(node, m.index + m[0].length);
+        var rect = range.getBoundingClientRect();
+        if (!rect || rect.width === 0 || rect.height === 0) continue;
+        var word = {
+          word: m[0],
+          x: (rect.left - layerRect.left) / scale,
+          y: (rect.top - layerRect.top) / scale,
+          w: rect.width / scale,
+          h: rect.height / scale,
+        };
+        if (words.length < 30000) words.push(word);
+      }
+    }
+    return words;
   }
 
   // Show the text layer that matches the visible canvas; keep the buffered
@@ -157,7 +202,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
       var ctx = canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var pixels = page.render({ canvasContext: ctx, viewport: viewport }).promise;
-      var words = renderTextLayerFor(canvas, page, viewport);
+      var words = renderTextLayerFor(canvas, page, viewport, n);
       return Promise.all([pixels, words]);
     });
   }
@@ -200,6 +245,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
 
   function openPdf(base64, initialPage) {
     resetZoom();
+    pageWordCache = {};
     pdfjsLib.getDocument({ data: base64ToUint8Array(base64) }).promise.then(function (doc) {
       pdfDoc = doc;
       post({ type: 'totalPages', totalPages: doc.numPages });
