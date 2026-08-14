@@ -15,6 +15,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 type Props = {
   word: string | null;
+  noText?: boolean;
   onClose: () => void;
 };
 
@@ -160,11 +161,17 @@ function parseWiktionary(wikitext: string): {
   return { phonetic, definitions };
 }
 
-export function WordLookup({ word, onClose }: Props) {
+export function WordLookup({ word, noText = false, onClose }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
   const [initial] = useState(() => {
+    if (noText) {
+      return {
+        key: '',
+        state: { phase: 'error', message: 'No selectable text on this page.' } as LookupState,
+      };
+    }
     if (!word) return null;
     const key = normalizeWord(word).toLowerCase();
     if (!key) {
@@ -177,6 +184,7 @@ export function WordLookup({ word, onClose }: Props) {
   const requestIdRef = useRef(0);
 
   useEffect(() => {
+    if (noText) return;
     const key = initial?.key;
     if (!word || !key || initial?.state.phase !== 'loading') return;
 
@@ -193,14 +201,23 @@ export function WordLookup({ word, onClose }: Props) {
           redirects: '1',
           origin: '*',
         });
-        const response = await fetch(`${WIKTIONARY_API}?${params.toString()}`);
+        const response = await fetch(`${WIKTIONARY_API}?${params.toString()}`, {
+          headers: {
+            'User-Agent': 'LumioReader/1.0 (dictionary lookup; React Native)',
+          },
+        });
         if (!response.ok) {
-          throw new Error('Lookup failed');
+          throw new Error(`Lookup failed (HTTP ${response.status})`);
         }
-        const json = (await response.json()) as {
+        let json: {
           parse?: { title?: string; wikitext?: string };
           error?: { info?: string };
         };
+        try {
+          json = await response.json();
+        } catch {
+          throw new Error('Lookup failed (bad response)');
+        }
         if (json.error) {
           throw new Error('No definition found');
         }
@@ -227,11 +244,11 @@ export function WordLookup({ word, onClose }: Props) {
       }
     };
     run();
-  }, [word, initial]);
+  }, [word, initial, noText]);
 
-  if (!word) return null;
+  if (!word && !noText) return null;
 
-  const title = word ? normalizeWord(word) : '';
+  const title = noText ? 'No selectable text' : word ? normalizeWord(word) : '';
 
   return (
     <Modal
