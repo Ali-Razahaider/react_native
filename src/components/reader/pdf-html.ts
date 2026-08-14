@@ -63,21 +63,6 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   .textLayer ::selection {
     background: rgba(32, 138, 239, 0.35);
   }
-  #hl {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    transform-origin: 0 0;
-    z-index: 3;
-    pointer-events: none;
-    overflow: hidden;
-  }
-  #hl div {
-    position: absolute;
-    background: rgba(32, 138, 239, 0.35);
-    border-radius: 2px;
-  }
 </style>
 </head>
 <body>
@@ -87,7 +72,6 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     <canvas id="pdf-canvas"></canvas>
     <div class="textLayer" id="text-layer-b"></div>
     <canvas id="pdf-canvas-b"></canvas>
-    <div id="hl"></div>
   </div>
 </div>
 <script>${safePdfJs}</script>
@@ -173,32 +157,6 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
       if (!node || node.nodeType !== 3) continue;
       var text = node.textContent;
       if (!text) continue;
-      // pdf.js compensates for letter-spacing by scaling each span about its
-      // center (transform: scaleX(...)) so the layer's width matches the
-      // canvas. getBoundingClientRect therefore reports positions squeezed or
-      // stretched around the span center, a few px off the glyphs on screen.
-      // Un-map that per span so hit-testing matches the pixels the user sees.
-      var k = 1;
-      var centerX = 0;
-      var cs = window.getComputedStyle(span);
-      if (cs) {
-        var tm = cs.transform;
-        if (tm && tm !== 'none') {
-          var mx = tm.match(/matrix\(([^)]+)\)/);
-          if (mx) {
-            var parts = mx[1].split(',').map(function (s) { return parseFloat(s); });
-            // matrix(a,b,c,d,e,f): a is scaleX; b/c nonzero means rotation,
-            // which we can't correct here, so leave those spans untouched.
-            if (parts.length === 6 && Math.abs(parts[1]) < 0.001 && Math.abs(parts[2]) < 0.001 && Math.abs(parts[0]) > 0.0001) {
-              k = parts[0];
-            }
-          }
-        }
-      }
-      if (k !== 1) {
-        var srect = span.getBoundingClientRect();
-        centerX = srect.left - layerRect.left + srect.width / 2;
-      }
       // March through words in the run of text inside this span.
       var re = /[A-Za-z]+(?:['\u2019-][A-Za-z]+)*/g;
       var m;
@@ -208,17 +166,11 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
         range.setEnd(node, m.index + m[0].length);
         var rect = range.getBoundingClientRect();
         if (!rect || rect.width === 0 || rect.height === 0) continue;
-        var x = rect.left - layerRect.left;
-        var w = rect.width;
-        if (k !== 1) {
-          x = centerX + (x - centerX) / k;
-          w = w / k;
-        }
         var word = {
           word: m[0],
-          x: x / scale,
+          x: (rect.left - layerRect.left) / scale,
           y: (rect.top - layerRect.top) / scale,
-          w: w / scale,
+          w: rect.width / scale,
           h: rect.height / scale,
         };
         if (words.length < 30000) words.push(word);
@@ -251,12 +203,6 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
       canvas.height = viewport.height * dpr;
       canvas.style.width = viewport.width + 'px';
       canvas.style.height = viewport.height + 'px';
-      // Size the highlight overlay to the same box as the text layer so child
-      // divs positioned in layer-local coordinates land exactly on the word.
-      var hl = document.getElementById('hl');
-      hl.style.width = viewport.width + 'px';
-      hl.style.height = viewport.height + 'px';
-      hl.innerHTML = '';
       var ctx = canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var pixels = page.render({ canvasContext: ctx, viewport: viewport }).promise;
@@ -649,17 +595,6 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     return best;
   }
 
-  function drawHighlight(word) {
-    var hl = document.getElementById('hl');
-    hl.innerHTML = '';
-    var div = document.createElement('div');
-    div.style.left = word.x + 'px';
-    div.style.top = word.y + 'px';
-    div.style.width = word.w + 'px';
-    div.style.height = word.h + 'px';
-    hl.appendChild(div);
-  }
-
   function fireLongPress(x, y) {
     var words = pageWordCache[currentPage];
     // Rendered page with zero word boxes (scanned/image-only page): let the
@@ -669,12 +604,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
       return;
     }
     var word = wordAtPoint(x, y);
-    if (!word) {
-      // A long-press on empty space just drops any previous highlight.
-      document.getElementById('hl').innerHTML = '';
-      return;
-    }
-    drawHighlight(word);
+    if (!word) return;
     longPressed = true;
     post({ type: 'wordSelected', word: word.word });
   }
