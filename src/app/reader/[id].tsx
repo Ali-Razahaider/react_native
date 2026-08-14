@@ -28,6 +28,7 @@ export default function ReaderScreen() {
   const [totalPages, setTotalPages] = useState(0);
   const [initialPage, setInitialPage] = useState(1);
   const [lookupWord, setLookupWord] = useState<string | null>(null);
+  const [noSelectableText, setNoSelectableText] = useState(false);
 
   const readingMode: ThemeMode = override ?? 'system';
   const onChangeMode = useCallback(
@@ -95,7 +96,13 @@ export default function ReaderScreen() {
   );
 
   const onWordSelected = useCallback((next: string) => {
+    setNoSelectableText(false);
     setLookupWord(next);
+  }, []);
+
+  const onNoSelectableText = useCallback(() => {
+    setNoSelectableText(true);
+    setLookupWord(null);
   }, []);
 
   const thumbnailCapturedRef = useRef(false);
@@ -151,9 +158,18 @@ export default function ReaderScreen() {
             onTotalPages={onTotalPages}
             onPageChange={onPageChange}
             onWordSelected={onWordSelected}
+            onNoSelectableText={onNoSelectableText}
             onError={setError}
           />
-          <WordLookup key={lookupWord ?? 'none'} word={lookupWord} onClose={() => setLookupWord(null)} />
+          <WordLookup
+            key={lookupWord ?? (noSelectableText ? 'no-text' : 'none')}
+            word={lookupWord}
+            noText={noSelectableText}
+            onClose={() => {
+              setLookupWord(null);
+              setNoSelectableText(false);
+            }}
+          />
           {totalPages > 0 && (
             <PageControls
               page={page}
