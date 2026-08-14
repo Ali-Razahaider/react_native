@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 
 import { BrandLoader } from '@/components/brand/brand-loader';
 
-const DURATION = 600;
+const DURATION = 700;
 
 export function AnimatedSplashOverlay() {
   const [animate, setAnimate] = useState(false);
@@ -21,17 +21,31 @@ export function AnimatedSplashOverlay() {
   const splashKeyframe = new Keyframe({
     0: {
       opacity: 1,
+      transform: [{ scale: 1 }],
     },
-    20: {
+    55: {
       opacity: 1,
+      transform: [{ scale: 1 }],
     },
     100: {
       opacity: 0,
-      easing: Easing.elastic(0.7),
+      transform: [{ scale: 1.05 }],
+      easing: Easing.out(Easing.cubic),
     },
   });
 
-  const loader = <BrandLoader light size={112} />;
+  const loader = (
+    <View style={styles.content}>
+      <Image
+        source={require('@/assets/images/logo-glow.png')}
+        style={styles.glow}
+        resizeMode="contain"
+      />
+      <View style={styles.loader}>
+        <BrandLoader light size={112} />
+      </View>
+    </View>
+  );
 
   return animate ? (
     <Animated.View
@@ -56,5 +70,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
+  },
+  content: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glow: {
+    position: 'absolute',
+    width: 420,
+    height: 420,
+    opacity: 0.9,
+  },
+  loader: {
+    zIndex: 1,
   },
 });

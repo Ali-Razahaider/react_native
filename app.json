@@ -21,7 +21,7 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/lumio-logo.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       "expo-router",
@@ -29,8 +29,12 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",
-          "image": "./assets/images/lumio-logo.png",
-          "imageWidth": 76
+          "image": "./assets/images/logo-glow.png",
+          "dark": {
+            "backgroundColor": "#208AEF",
+            "image": "./assets/images/logo-glow.png"
+          },
+          "imageWidth": 380
         }
       ],
       "expo-sqlite"
