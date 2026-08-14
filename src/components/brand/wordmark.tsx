@@ -7,7 +7,7 @@ type WordmarkProps = {
   size?: number;
 };
 
-export function Wordmark({ light = false, size = 28 }: WordmarkProps) {
+export function Wordmark({ light = false, size = 36 }: WordmarkProps) {
   const theme = useTheme();
   const color = light ? '#ffffff' : theme.text;
 
@@ -24,7 +24,7 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   main: {
-    fontFamily: 'PlayfairDisplay-Bold',
-    letterSpacing: -0.5,
+    fontFamily: 'Caveat-Bold',
+    letterSpacing: 1,
   },
 });

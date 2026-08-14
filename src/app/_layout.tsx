@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
+import { Caveat_700Bold } from '@expo-google-fonts/caveat';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { ThemeModeProvider, useThemeMode } from '@/context/theme-mode-context';
@@ -25,6 +26,7 @@ export default function RootLayout() {
     'Sora-Regular': require('@/assets/fonts/Sora-Regular.ttf'),
     'Sora-Bold': require('@/assets/fonts/Sora-Bold.ttf'),
     'PlayfairDisplay-Bold': require('@/assets/fonts/PlayfairDisplay-Bold.ttf'),
+    'Caveat-Bold': Caveat_700Bold,
   });
 
   if (!fontsLoaded && !fontError) {

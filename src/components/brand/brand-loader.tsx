@@ -9,7 +9,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { PdfMark } from '@/components/brand/pdf-mark';
 import { Wordmark } from '@/components/brand/wordmark';
 import { Spacing } from '@/constants/theme';
 
@@ -57,11 +56,8 @@ export function BrandLoader({ light = false, size = 112 }: BrandLoaderProps) {
   return (
     <View style={styles.container}>
       <Animated.View style={markStyle}>
-        <PdfMark size={size} />
+        <Wordmark light={light} size={size * 0.4} />
       </Animated.View>
-      <View style={styles.wordmark}>
-        <Wordmark light={light} size={size * 0.26} />
-      </View>
       <View style={styles.dots}>
         <LoadingDot delay={0} color={dotColor} />
         <LoadingDot delay={DOT_DURATION / 3} color={dotColor} />
@@ -75,9 +71,6 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  wordmark: {
-    marginTop: Spacing.three,
   },
   dots: {
     flexDirection: 'row',

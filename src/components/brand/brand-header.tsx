@@ -1,6 +1,5 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
 
-import { PdfMark } from '@/components/brand/pdf-mark';
 import { Wordmark } from '@/components/brand/wordmark';
 import { Spacing } from '@/constants/theme';
 
@@ -12,8 +11,7 @@ export function BrandHeader({ right, ...rest }: BrandHeaderProps) {
   return (
     <View style={styles.header} {...rest}>
       <View style={styles.brand}>
-        <PdfMark size={44} />
-        <Wordmark size={24} />
+        <Wordmark size={32} />
       </View>
       {right}
     </View>
