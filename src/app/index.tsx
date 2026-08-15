@@ -1,4 +1,5 @@
 import * as DocumentPicker from "expo-document-picker";
+import { SymbolView } from "expo-symbols";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Modal, Pressable, StyleSheet, View } from "react-native";
@@ -9,6 +10,7 @@ import { BrandLoader } from "@/components/brand/brand-loader";
 import { BookCard } from "@/components/library/book-card";
 import { EmptyState } from "@/components/library/empty-state";
 import { SortControl, type SortMode } from "@/components/library/sort-control";
+import { LibraryMenu } from "@/components/library/stats-bar";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -103,10 +105,7 @@ export default function LibraryScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <BrandHeader
-            right={<ThemeToggle />}
-            style={styles.headerBrand}
-          />
+          <BrandHeader right={<ThemeToggle />} style={styles.headerBrand} />
         </View>
 
         {loading ? (
@@ -161,6 +160,12 @@ export default function LibraryScreen() {
             ]}>
             <ThemedText style={styles.addLabel}>+</ThemedText>
           </Pressable>
+        )}
+
+        {books.length > 0 && (
+          <View style={styles.statsBarWrap}>
+            <LibraryMenu />
+          </View>
         )}
 
         <Modal
@@ -220,6 +225,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  statsBarWrap: {
+    marginHorizontal: -Spacing.three,
+  },
   center: {
     flex: 1,
     alignItems: "center",
@@ -228,7 +236,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingTop: Spacing.three,
-    paddingBottom: Spacing.six,
+    paddingBottom: 170,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -244,7 +252,7 @@ const styles = StyleSheet.create({
   addButton: {
     position: "absolute",
     right: Spacing.four,
-    bottom: Spacing.five,
+    bottom: 96,
     width: 56,
     height: 56,
     borderRadius: 28,

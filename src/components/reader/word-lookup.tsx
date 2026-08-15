@@ -17,6 +17,7 @@ type Props = {
   word: string | null;
   noText?: boolean;
   onClose: () => void;
+  onLearned?: (word: string, definition: string, partOfSpeech: string) => void;
 };
 
 type Definition = {
@@ -161,7 +162,7 @@ function parseWiktionary(wikitext: string): {
   return { phonetic, definitions };
 }
 
-export function WordLookup({ word, noText = false, onClose }: Props) {
+export function WordLookup({ word, noText = false, onClose, onLearned }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -182,6 +183,18 @@ export function WordLookup({ word, noText = false, onClose }: Props) {
 
   const [state, setState] = useState<LookupState>(initial?.state ?? { phase: 'loading' });
   const requestIdRef = useRef(0);
+  const reportedRef = useRef(false);
+
+  // Report the successfully looked-up word so the reader can save it to the
+  // vocabulary list. Fires once per lookup (covers cached + fresh results).
+  useEffect(() => {
+    if (noText || !onLearned || reportedRef.current) return;
+    if (state.phase !== 'result') return;
+    const first = state.definitions[0];
+    if (!first || !initial?.key) return;
+    reportedRef.current = true;
+    onLearned(initial.key, first.definition, first.partOfSpeech);
+  }, [state, initial, noText, onLearned]);
 
   useEffect(() => {
     if (noText) return;
