@@ -12,10 +12,53 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; touch-action: none; }
-  body { background: #f2f3f5; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body { background: #f2f3f5; touch-action: pan-y; }
   body.dark { background: #000000; }
   #page-wrap { position: relative; width: 100%; height: 100%; touch-action: none; }
+  #continuous-wrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+    display: none;
+  }
+  .cpage { position: relative; margin: 0 auto; }
+  .cpage canvas {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    display: block;
+    margin: 0 auto;
+    touch-action: pan-y;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+  }
+  .cpage canvas.visible { opacity: 1; }
+  .cpage .textLayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    transform: none;
+    overflow: hidden;
+    line-height: 1;
+    text-align: initial;
+    text-size-adjust: none;
+    transform-origin: 0 0;
+    z-index: 2;
+    touch-action: auto;
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
   #stage {
     position: absolute;
     top: 0;
@@ -74,6 +117,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     <canvas id="pdf-canvas-b"></canvas>
   </div>
 </div>
+<div id="continuous-wrap"></div>
 <script>${safePdfJs}</script>
 <script>
 (function () {
@@ -107,6 +151,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   var pdfDoc = null;
   var currentPage = 1;
   var busy = false;
+  var layout = 'single'; // 'single' | 'continuous'
 
   // Word boxes for each rendered page, keyed by page number. Built from the
   // transparent text layer's own geometry (see buildWords) so hit-testing
@@ -253,7 +298,11 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
     pdfjsLib.getDocument({ data: base64ToUint8Array(base64) }).promise.then(function (doc) {
       pdfDoc = doc;
       post({ type: 'totalPages', totalPages: doc.numPages });
-      renderFirstPage(initialPage || 1);
+      if (layout === 'continuous') {
+        buildContinuousLayout(initialPage || 1);
+      } else {
+        renderFirstPage(initialPage || 1);
+      }
     }).catch(postError);
   }
 
@@ -286,6 +335,183 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   window.__setDarkMode = function (on) {
     document.body.classList.toggle('dark', !!on);
   };
+  window.__setLayout = setLayout;
+
+  // --- Continuous (vertical scroll) layout ---------------------------------
+  // Pages are laid out stacked in #continuous-wrap. Only a small window around
+  // the visible area is actually rendered (canvases + text layers); the rest
+  // are blank reserved divs so scrolling stays stable on large books.
+  var CONT_GAP = 14;          // vertical gap between pages, px
+  var CONT_BUFFER = 2;        // pages rendered beyond the visible window, each side
+  var contWrap = null;
+  var contEntries = {};       // page number -> { el, canvas, layer, top, height, scale, rendered }
+  var contTarget = 1;         // page to scroll to once layout is ready
+
+  function contFitScale(baseWidth) {
+    var wrapW = contWrap.clientWidth || window.innerWidth || 320;
+    return (wrapW - CONT_GAP * 2) / baseWidth;
+  }
+
+  // Lazily render page n into its reserved .cpage element. Returns a promise.
+  function renderContPage(n) {
+    var entry = contEntries[n];
+    if (!entry || entry.rendered) return Promise.resolve();
+    entry.rendered = true;
+    return pdfDoc.getPage(n).then(function (page) {
+      var viewport = page.getViewport({ scale: entry.scale });
+      var dpr = window.devicePixelRatio || 1;
+      var canvas = entry.canvas;
+      canvas.width = Math.round(viewport.width * dpr);
+      canvas.height = Math.round(viewport.height * dpr);
+      canvas.style.width = viewport.width + 'px';
+      canvas.style.height = viewport.height + 'px';
+      var layer = entry.layer;
+      layer.style.width = viewport.width + 'px';
+      layer.style.height = viewport.height + 'px';
+      layer.style.setProperty('--scale-factor', String(viewport.scale));
+      layer.innerHTML = '';
+      var ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      var pixels = page.render({ canvasContext: ctx, viewport: viewport }).promise;
+      var words = page.getTextContent().then(function (content) {
+        return pdfjsLib.renderTextLayer({
+          textContentSource: content,
+          container: layer,
+          viewport: viewport
+        }).promise;
+      }).then(function () {
+        pageWordCache[n] = buildWordBoxes(layer, 1);
+      });
+      return Promise.all([pixels, words]).then(function () {
+        canvas.classList.add('visible');
+      });
+    });
+  }
+
+  // Drop a rendered page back to a reserved blank div to free memory.
+  function releaseContPage(n) {
+    var entry = contEntries[n];
+    if (!entry || !entry.rendered) return;
+    entry.rendered = false;
+    entry.canvas.width = 1;
+    entry.canvas.height = 1;
+    entry.canvas.classList.remove('visible');
+    entry.layer.innerHTML = '';
+    pageWordCache[n] = null;
+  }
+
+  // Render the window of pages around the scroll position; release the rest.
+  function syncContWindow() {
+    if (!pdfDoc) return;
+    var center = contWrap.scrollTop + (contWrap.clientHeight || window.innerHeight) / 2;
+    var page = currentPage;
+    for (var n = 1; n <= pdfDoc.numPages; n++) {
+      if (contEntries[n] && center >= contEntries[n].top && center < contEntries[n].top + contEntries[n].height) {
+        page = n;
+        break;
+      }
+    }
+    if (page !== currentPage) {
+      currentPage = page;
+      post({ type: 'pageRendered', page: page });
+    }
+    var lo = Math.max(1, page - CONT_BUFFER);
+    var hi = Math.min(pdfDoc.numPages, page + CONT_BUFFER);
+    for (var r = lo; r <= hi; r++) renderContPage(r);
+    for (var r2 = 1; r2 <= pdfDoc.numPages; r2++) {
+      if (r2 < lo || r2 > hi) releaseContPage(r2);
+    }
+  }
+
+  // Build the reserved layout for every page (blank divs) so offsets are known
+  // up front, then render the window around target.
+  function buildContinuousLayout(target) {
+    if (!pdfDoc || !contWrap) return;
+    contWrap.innerHTML = '';
+    contEntries = {};
+    pageWordCache = {};
+    var offset = 0;
+    var seq = [];
+    for (var n = 1; n <= pdfDoc.numPages; n++) seq.push(n);
+    contTarget = target || currentPage || 1;
+
+    var chain = Promise.resolve();
+    seq.forEach(function (p) {
+      chain = chain.then(function () {
+        return pdfDoc.getPage(p).then(function (page) {
+          var base = page.getViewport({ scale: 1 });
+          var scale = contFitScale(base.width);
+          var h = base.height * scale;
+          var el = document.createElement('div');
+          el.className = 'cpage';
+          el.style.height = Math.ceil(h) + 'px';
+          var canvas = document.createElement('canvas');
+          var layer = document.createElement('div');
+          layer.className = 'textLayer';
+          el.appendChild(canvas);
+          el.appendChild(layer);
+          contWrap.appendChild(el);
+          contEntries[p] = { el: el, canvas: canvas, layer: layer, top: offset, height: h, scale: scale, rendered: false };
+          offset += h + CONT_GAP;
+        });
+      });
+    });
+
+    chain.then(function () {
+      if (contEntries[contTarget]) {
+        contWrap.scrollTop = Math.max(0, contEntries[contTarget].top);
+      }
+      syncContWindow();
+    }).catch(postError);
+  }
+
+  // Figure out which page's band contains the middle of the viewport.
+  function computeCurrentFromScroll() {
+    if (!pdfDoc || Object.keys(contEntries).length === 0) return;
+    var mid = contWrap.scrollTop + (contWrap.clientHeight || window.innerHeight) / 2;
+    for (var n = 1; n <= pdfDoc.numPages; n++) {
+      var c = contEntries[n];
+      if (c && mid >= c.top && mid < c.top + c.height) {
+        if (n !== currentPage) {
+          currentPage = n;
+          post({ type: 'pageRendered', page: n });
+        }
+        return;
+      }
+    }
+  }
+
+  var contScrollTimer = null;
+  function onContScroll() {
+    if (contScrollTimer) return;
+    contScrollTimer = setTimeout(function () {
+      contScrollTimer = null;
+      computeCurrentFromScroll();
+      syncContWindow();
+    }, 60);
+  }
+
+  function setLayout(mode) {
+    if (mode === layout) return;
+    layout = mode;
+    contWrap = document.getElementById('continuous-wrap');
+    var pageWrap = document.getElementById('page-wrap');
+    if (mode === 'continuous') {
+      resetZoom();
+      pageWrap.style.display = 'none';
+      contWrap.style.display = 'block';
+      contWrap.addEventListener('scroll', onContScroll, { passive: true });
+      if (pdfDoc) buildContinuousLayout(currentPage);
+    } else {
+      contWrap.style.display = 'none';
+      contWrap.removeEventListener('scroll', onContScroll);
+      pageWrap.style.display = 'block';
+      if (pdfDoc) {
+        resetZoom();
+        renderPage(currentPage);
+      }
+    }
+  }
 
   // --- Zoom & pan ---------------------------------------------------------
   var zoom = 1;
@@ -390,6 +616,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   }
 
   document.addEventListener('touchstart', function (e) {
+    if (layout !== 'single') return;
     for (var i = 0; i < e.changedTouches.length; i++) {
       touches[e.changedTouches[i].identifier] = e.changedTouches[i];
     }
@@ -412,6 +639,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   }, { passive: false });
 
   document.addEventListener('touchmove', function (e) {
+    if (layout !== 'single') return;
     var count = Object.keys(touches).length;
 
     if (count === 2 && pinchStartDist > 0) {
@@ -467,6 +695,7 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   }, { passive: false });
 
   document.addEventListener('touchend', function (e) {
+    if (layout !== 'single') return;
     var endTouch = e.changedTouches[0];
 
     if (!swiping && !touchActive && Object.keys(touches).length === 2) {
@@ -512,6 +741,10 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   }, { passive: false });
 
   document.addEventListener('touchcancel', function () {
+    if (layout !== 'single') {
+      touches = {};
+      return;
+    }
     touches = {};
     pinchStartDist = 0;
     touchActive = false;
@@ -556,7 +789,11 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   function wordAtPoint(x, y) {
     var words = pageWordCache[currentPage];
     if (!words || words.length === 0) return null;
-    var layer = textLayers[front];
+    // In continuous layout each page has its own layer; in single layout the
+    // buffered layer of the visible canvas is the hit surface.
+    var layer = layout === 'continuous'
+      ? (contEntries[currentPage] ? contEntries[currentPage].layer : null)
+      : textLayers[front];
     if (!layer) return null;
     var layerRect = layer.getBoundingClientRect();
     // Touch points are in viewport coords; boxes are stored in layer-local
@@ -671,9 +908,24 @@ export function buildPdfHtml({ pdfJsSource, workerBase64 }: BuildPdfHtmlOptions)
   document.addEventListener('message', function (e) {
     var msg;
     try { msg = JSON.parse(e.data); } catch (_) { return; }
-    if (msg.type === 'openPdf') openPdf(msg.data, msg.initialPage);
-    else if (msg.type === 'goToPage') renderPage(msg.page);
-    else if (msg.type === 'flip') flip(msg.direction);
+    if (msg.type === 'openPdf') {
+      openPdf(msg.data, msg.initialPage);
+    }
+    else if (msg.type === 'goToPage') {
+      if (layout === 'continuous') {
+        if (contEntries[msg.page]) {
+          contWrap.scrollTop = Math.max(0, contEntries[msg.page].top);
+          computeCurrentFromScroll();
+          syncContWindow();
+        }
+      } else {
+        renderPage(msg.page);
+      }
+    }
+    else if (msg.type === 'flip') {
+      if (layout === 'single') flip(msg.direction);
+    }
+    else if (msg.type === 'setLayout') window.__setLayout(msg.mode);
     else if (msg.type === 'setDarkMode') window.__setDarkMode(msg.on);
     else if (msg.type === 'captureThumbnail') window.__captureThumbnail();
   });

@@ -5,6 +5,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { loadPdfAssets } from '@/components/reader/pdf-assets';
 import { buildPdfHtml } from '@/components/reader/pdf-html';
+import { type ScrollMode } from '@/components/reader/scroll-mode';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -18,6 +19,7 @@ type PdfViewerProps = {
   uri: string;
   initialPage?: number;
   darkMode?: boolean;
+  scrollMode?: ScrollMode;
   onTotalPages?: (totalPages: number) => void;
   onPageChange?: (page: number) => void;
   onWordSelected?: (word: string) => void;
@@ -36,13 +38,14 @@ type Inbound =
   | { type: 'error'; message: string };
 
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer(
-  { uri, initialPage = 1, darkMode = false, onTotalPages, onPageChange, onWordSelected, onNoSelectableText, onError },
+  { uri, initialPage = 1, darkMode = false, scrollMode = 'single', onTotalPages, onPageChange, onWordSelected, onNoSelectableText, onError },
   ref,
 ) {
   const theme = useTheme();
   const webRef = useRef<WebView>(null);
   const readyRef = useRef(false);
   const darkModeRef = useRef(darkMode);
+  const scrollModeRef = useRef(scrollMode);
   const thumbnailResolveRef = useRef<((data: string) => void) | null>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -77,6 +80,14 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     }
   }, [darkMode, sendToWeb]);
 
+  // Keep the webview's layout in sync whenever the mode changes.
+  useEffect(() => {
+    scrollModeRef.current = scrollMode;
+    if (readyRef.current) {
+      sendToWeb(JSON.stringify({ type: 'setLayout', mode: scrollMode }));
+    }
+  }, [scrollMode, sendToWeb]);
+
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
       let msg: Inbound;
@@ -89,6 +100,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         case 'ready':
           readyRef.current = true;
           sendToWeb(JSON.stringify({ type: 'setDarkMode', on: darkModeRef.current }));
+          sendToWeb(JSON.stringify({ type: 'setLayout', mode: scrollModeRef.current }));
           FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
           })

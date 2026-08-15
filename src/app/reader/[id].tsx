@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { PageControls } from '@/components/reader/page-controls';
 import { PdfViewer, type PdfViewerHandle } from '@/components/reader/pdf-viewer';
 import { ReaderHeader } from '@/components/reader/reader-header';
+import { useScrollModePreference } from '@/components/reader/use-scroll-mode-preference';
 import { WordLookup } from '@/components/reader/word-lookup';
 import { ThemedText } from '@/components/themed-text';
 import { type ThemeMode } from '@/constants/theme';
@@ -35,6 +36,7 @@ export default function ReaderScreen() {
     (next: ThemeMode) => setOverride(next === 'system' ? null : next),
     [setOverride],
   );
+  const { mode: scrollMode, setMode: setScrollMode } = useScrollModePreference();
 
   useEffect(() => {
     return () => setOverride(null);
@@ -149,12 +151,15 @@ export default function ReaderScreen() {
             title={book.title}
             readingMode={readingMode}
             onChangeMode={onChangeMode}
+            scrollMode={scrollMode}
+            onChangeScrollMode={setScrollMode}
           />
           <PdfViewer
             ref={viewerRef}
             uri={book.uri}
             initialPage={initialPage}
             darkMode={isDark}
+            scrollMode={scrollMode}
             onTotalPages={onTotalPages}
             onPageChange={onPageChange}
             onWordSelected={onWordSelected}
