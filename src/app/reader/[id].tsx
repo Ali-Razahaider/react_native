@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 
 import { PageControls } from '@/components/reader/page-controls';
 import { PdfViewer, type PdfViewerHandle } from '@/components/reader/pdf-viewer';
@@ -14,6 +14,8 @@ import { useThemeMode } from '@/context/theme-mode-context';
 import { useTheme } from '@/hooks/use-theme';
 import { getBook, saveBookThumbnail } from '@/lib/library';
 import { getProgress, saveProgress } from '@/lib/progress-db';
+import { endSession, recordBookFinish, startSession } from '@/lib/stats-db';
+import { recordWordLearned } from '@/lib/vocab-db';
 import { type Book } from '@/lib/types';
 
 export default function ReaderScreen() {
@@ -55,6 +57,7 @@ export default function ReaderScreen() {
         } else {
           setBook(found);
           const resumeAt = progress?.lastPage ?? found.lastPage ?? 0;
+          lastPageRef.current = Math.max(1, resumeAt);
           setInitialPage(Math.max(1, resumeAt));
         }
       })
@@ -76,6 +79,49 @@ export default function ReaderScreen() {
     viewerRef.current?.goToPage(next);
   }, [totalPages]);
 
+  // --- Reading session tracking -----------------------------------------
+  // A session begins when a book is opened and ends when the reader closes or
+  // the app backgrounds. The page delta (end - start) feeds the "pages read"
+  // stat, and reaching the final page records a "book finished" milestone.
+  const sessionIdRef = useRef<number | null>(null);
+  const sessionBookRef = useRef<string | null>(null);
+  const lastPageRef = useRef(1);
+
+  const closeSession = useCallback(() => {
+    const sessionId = sessionIdRef.current;
+    const bookId = sessionBookRef.current;
+    if (sessionId != null && bookId) {
+      endSession(sessionId, lastPageRef.current);
+    }
+    sessionIdRef.current = null;
+    sessionBookRef.current = null;
+  }, []);
+
+  const openSession = useCallback((bookIdToTrack: string) => {
+    closeSession();
+    sessionBookRef.current = bookIdToTrack;
+    startSession(bookIdToTrack, lastPageRef.current).then((id) => {
+      if (sessionBookRef.current === bookIdToTrack) sessionIdRef.current = id;
+    });
+  }, [closeSession]);
+
+  useEffect(() => {
+    if (!book || loading) return;
+    openSession(book.id);
+    return closeSession;
+  }, [book, loading, openSession, closeSession]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        closeSession();
+      } else if (state === 'active' && book && !loading) {
+        openSession(book.id);
+      }
+    });
+    return () => sub.remove();
+  }, [book, loading, openSession, closeSession]);
+
   const saveDebouncedRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scheduleSave = useCallback(
@@ -92,9 +138,13 @@ export default function ReaderScreen() {
   const onPageChange = useCallback(
     (next: number) => {
       setPage(next);
+      lastPageRef.current = next;
       scheduleSave(next);
+      if (totalPages > 0 && next >= totalPages && bookId) {
+        recordBookFinish(bookId);
+      }
     },
-    [scheduleSave],
+    [scheduleSave, totalPages, bookId],
   );
 
   const onWordSelected = useCallback((next: string) => {
@@ -173,6 +223,9 @@ export default function ReaderScreen() {
             onClose={() => {
               setLookupWord(null);
               setNoSelectableText(false);
+            }}
+            onLearned={(word, definition, partOfSpeech) => {
+              recordWordLearned(word, definition, partOfSpeech).catch(() => {});
             }}
           />
           {totalPages > 0 && (

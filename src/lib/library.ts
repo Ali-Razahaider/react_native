@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { type Book } from '@/lib/types';
 import { deleteProgress } from '@/lib/progress-db';
+import { deleteStatsForBook } from '@/lib/stats-db';
 
 const isWeb = Platform.OS === 'web';
 
@@ -144,6 +145,7 @@ export async function removeBookFromLibrary(id: string): Promise<boolean> {
   await saveIndex(index);
   try {
     await deleteProgress(id);
+    await deleteStatsForBook(id);
   } catch {
     // Ignore progress cleanup errors.
   }
@@ -177,6 +179,7 @@ export async function deleteBook(id: string): Promise<boolean> {
   await saveIndex(index);
   try {
     await deleteProgress(id);
+    await deleteStatsForBook(id);
   } catch {
     // Ignore progress cleanup errors.
   }

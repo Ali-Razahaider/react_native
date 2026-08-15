@@ -15,6 +15,8 @@ function RootNavigator() {
       <AnimatedSplashOverlay />
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="stats" options={{ headerShown: false }} />
+        <Stack.Screen name="vocab" options={{ headerShown: false }} />
         <Stack.Screen name="reader/[id]" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
