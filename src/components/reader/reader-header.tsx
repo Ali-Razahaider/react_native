@@ -5,6 +5,7 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ScrollModeLabels, ScrollModes, type ScrollMode } from '@/components/reader/scroll-mode';
 import { ThemedText } from '@/components/themed-text';
 import { type ThemeMode } from '@/constants/theme';
 import { Spacing } from '@/constants/theme';
@@ -22,9 +23,11 @@ type ReaderHeaderProps = {
   title: string;
   readingMode: ThemeMode;
   onChangeMode: (mode: ThemeMode) => void;
+  scrollMode: ScrollMode;
+  onChangeScrollMode: (mode: ScrollMode) => void;
 };
 
-export function ReaderHeader({ title, readingMode, onChangeMode }: ReaderHeaderProps) {
+export function ReaderHeader({ title, readingMode, onChangeMode, scrollMode, onChangeScrollMode }: ReaderHeaderProps) {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -135,6 +138,36 @@ export function ReaderHeader({ title, readingMode, onChangeMode }: ReaderHeaderP
                 </Pressable>
               );
             })}
+            <ThemedText type="small" themeColor="textSecondary" style={styles.cardTitle}>
+              Layout
+            </ThemedText>
+            <View style={styles.segmented}>
+              {ScrollModes.map((mode) => {
+                const active = mode === scrollMode;
+                return (
+                  <Pressable
+                    key={mode}
+                    accessibilityRole="button"
+                    accessibilityLabel={ScrollModeLabels[mode]}
+                    onPress={() => {
+                      onChangeScrollMode(mode);
+                      setMenuOpen(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.segment,
+                      active && { backgroundColor: theme.tint },
+                      pressed && styles.pressed,
+                    ]}>
+                    <ThemedText
+                      type="small"
+                      style={active ? styles.segmentActiveText : undefined}
+                      themeColor={active ? undefined : 'text'}>
+                      {ScrollModeLabels[mode]}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
             <Pressable
               accessibilityRole="button"
               onPress={() => setMenuOpen(false)}
@@ -198,6 +231,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two,
     borderRadius: 8,
+  },
+  segmented: {
+    flexDirection: 'row',
+    gap: Spacing.one,
+    padding: Spacing.one,
+  },
+  segment: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.one + Spacing.half,
+    borderRadius: 8,
+  },
+  segmentActiveText: {
+    color: '#ffffff',
   },
   close: {
     alignItems: 'center',
